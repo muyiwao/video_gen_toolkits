@@ -4,9 +4,9 @@ from pathlib import Path
 
 def organize_and_rename_videos():
     # 1. Define Paths
-    source_dir = Path(r"C:\Users\Muy\Downloads")
-    dest_dir = Path(r"C:\Project_Works\video_gen_toolkit\muyverse_maths\videos")
-    
+    source_dir = Path(r"C:\Users\Muy\Downloads\raw")
+    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\muyverse_maths\curated")
+
     # Ensure destination exists
     dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -32,12 +32,10 @@ def organize_and_rename_videos():
     for index, old_path in enumerate(target_files, start=1):
         new_name = f"{index}.mp4"
         new_path = old_path.with_name(new_name)
-        
         # Check if 1.mp4, 2.mp4 etc already exists to avoid overwriting errors
         if new_path.exists():
             print(f"Skipping {new_name}: File already exists.")
             continue
-            
         try:
             old_path.rename(new_path)
             print(f"Renamed: {old_path.name} -> {new_name}")

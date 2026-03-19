@@ -1,7 +1,8 @@
-./muyverse_maths/processed/*.mp4
-./grok_script/movies/*
+muyverse_maths/curated/*
+muyverse_maths/raw/*
+grok_script/movies/*
 
 
-./rain_content/recorded/*
+rain_content/recorded/*
 
 
