@@ -1,6 +1,5 @@
 import subprocess
 import json
-import math
 from pathlib import Path
 
 def get_video_info(video_path):
@@ -18,7 +17,7 @@ def get_video_info(video_path):
     duration = float(data['streams'][0]['duration'])
     return duration, fps
 
-def create_vertical_loop():
+def extract_quick_vertical():
     # 1. Paths Configuration
     source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
     output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output")
@@ -32,7 +31,7 @@ def create_vertical_loop():
         "4k":    "2160:3840"
     }
     
-    print("--- Vertical (9:16) Video Generator ---")
+    print("--- Quick 20s Vertical Extractor ---")
     
     # Resolution Selection
     print(f"Available Resolutions: {', '.join(res_map.keys())}")
@@ -52,73 +51,46 @@ def create_vertical_loop():
     }
     x_offset = crop_map.get(crop_choice, "(in_w-out_w)/2")
 
-    try:
-        duration_input = input("\nEnter length (e.g., '60s' or '1m'): ").lower().strip()
-        if duration_input.endswith('s'):
-            target_seconds = int(duration_input[:-1])
-        elif duration_input.endswith('m'):
-            target_seconds = int(duration_input[:-1]) * 60
-        else:
-            target_seconds = int(duration_input) * 60
-    except ValueError: 
-        print("Invalid duration format.")
-        return
-
     video_files = list(source_dir.glob("*.mp4"))
     if not video_files: 
         print("No source videos found.")
         return
     video_input = video_files[0]
-
-    tile_file = output_dir / "temp_master_tile.mp4"
-    list_file = output_dir / "concat_list.txt"
-    final_output = output_dir / f"Vertical_{crop_choice.upper()}_{target_seconds}s.mp4"
+    
+    # Static 20 second duration as requested
+    target_seconds = 20
+    final_output = output_dir / f"Quick_20s_{crop_choice.upper()}_{res_choice}.mp4"
 
     try:
-        duration, fps = get_video_info(video_input)
-        fade_dur = 1.0 if duration > 3 else 0.5
-        loop_duration = duration - fade_dur
+        _, fps = get_video_info(video_input)
 
-        print(f"\n[1/2] Cropping to {crop_choice.upper()} and Creating Loop...")
+        print(f"\n🚀 Extracting 20 seconds with {crop_choice.upper()} crop...")
         
-        # FILTER LOGIC:
-        # We scale height first, then crop using the dynamic x_offset
-        filter_complex = (
-            f"[0:v]scale=-1:{target_h},crop={target_w}:{target_h}:{x_offset}:0,setsar=1,split[main][over];"
-            f"[over]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[fadein];"
-            f"[main]trim=start={fade_dur},setpts=PTS-STARTPTS[base];"
-            f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={fade_dur}:alpha=1[alpha_fade];"
-            f"[base][alpha_fade]overlay=x=0:y=0:shortest=1[v]"
-        )
+        # EFFICIENCY UPDATES:
+        # -ss 0: Fast seek to start
+        # -t 20: Stop exactly at 20 seconds
+        # -c:a copy: Pass-through original audio (zero quality loss, zero CPU usage)
+        # -preset ultrafast: Maximizes processing speed
+        
+        filter_complex = f"scale=-1:{target_h},crop={target_w}:{target_h}:{x_offset}:0,setsar=1"
 
         subprocess.run([
-            "ffmpeg", "-y", "-i", str(video_input),
-            "-filter_complex", filter_complex,
-            "-map", "[v]", "-r", str(fps),
-            "-c:v", "libx264", "-crf", "18", "-preset", "slow",
-            str(tile_file)
+            "ffmpeg", "-y",
+            "-ss", "0",                  # Seek to start
+            "-i", str(video_input),      # Input file
+            "-t", str(target_seconds),   # Limit duration to 20s
+            "-vf", filter_complex,       # Apply crop/scale
+            "-c:v", "libx264", 
+            "-crf", "18", 
+            "-preset", "ultrafast",      # Most efficient/fastest encoding
+            "-c:a", "copy",              # PRESERVE AUDIO (Copy stream)
+            str(final_output)
         ], check=True)
 
-        # STAGE 2: Final Assembly
-        print(f"[2/2] Stitching to {target_seconds} seconds...")
-        tiles_needed = math.ceil(target_seconds / loop_duration)
-        
-        with open(list_file, "w") as f:
-            for _ in range(tiles_needed):
-                f.write(f"file '{tile_file.name}'\n")
-
-        subprocess.run([
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
-            "-c", "copy", "-t", str(target_seconds), str(final_output)
-        ], check=True)
-
-        print(f"\nSUCCESS! Vertical video saved to: {final_output}")
+        print(f"\n✅ DONE! 20s Video Saved: {final_output}")
 
     except Exception as e:
         print(f"\nAn error occurred: {e}")
-    finally:
-        if tile_file.exists(): tile_file.unlink()
-        if list_file.exists(): list_file.unlink()
 
 if __name__ == "__main__":
-    create_vertical_loop()
+    extract_quick_vertical()
