@@ -20,7 +20,7 @@ def get_video_info(video_path):
 
 def create_ultra_long_loop():
     # 1. Paths Configuration
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
+    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\raw")
     output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output")
     output_dir.mkdir(parents=True, exist_ok=True)
     
