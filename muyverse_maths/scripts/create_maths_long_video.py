@@ -1,11 +1,10 @@
 import os
 from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
 
-VIDEO_FOLDER = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\maths_content\videos"
+VIDEO_FOLDER = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\muyverse_maths\curated"
 TOTAL_VIDEOS = 20
 NUMBER_DURATION = 2
 FONT_SIZE = 200
-
 OUTPUT_FILE = os.path.join(VIDEO_FOLDER, "merged_output.mp4")
 
 clips = []
