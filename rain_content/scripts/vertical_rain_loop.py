@@ -18,11 +18,16 @@ def get_video_info(video_path):
     return duration, fps
 
 def extract_quick_vertical():
-    # 1. Paths Configuration
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output")
+    # 1. Paths Configuration    
+    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
     output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output")
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # --- ASSET PATHS ---
+    img1_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\shorts\subscribe-cta.png")
+    img2_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\shorts\logo-cta.png")
+    audio_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\long\background_audio.mp3")
+
     # 2. Vertical Resolution Map (9:16)
     res_map = {
         "720p":  "720:1280",
@@ -31,63 +36,79 @@ def extract_quick_vertical():
         "4k":    "2160:3840"
     }
     
-    print("--- Quick 20s Vertical Extractor ---")
+    print("--- 20s Vertical Seamless Looper ---")
     
-    # Resolution Selection
-    print(f"Available Resolutions: {', '.join(res_map.keys())}")
     res_choice = input("Enter resolution (default 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1080:1920")
-    target_w, target_h = target_res.split(':')
+    target_w, target_h = map(int, target_res.split(':'))
 
-    # Crop Area Selection
-    print("\nSelect Crop Focus Area:")
-    print("[L] Left | [C] Center | [R] Right")
-    crop_choice = input("Choice: ").lower().strip()
+    # --- CAPTION REQUEST ---
+    user_caption = input("\nEnter the caption for the video: ").strip()
+
+    print("\nSelect Crop Focus Area: [L] Left | [C] Center | [R] Right")
+    choice_input = input("Choice: ").lower().strip()
     
     crop_map = {
-        "l": "0",                         # Far left
-        "c": "(in_w-out_w)/2",            # Mathematical center
-        "r": "in_w-out_w"                 # Far right
+        "l": "0",
+        "c": "(in_w-out_w)/2",
+        "r": "in_w-out_w"
     }
-    x_offset = crop_map.get(crop_choice, "(in_w-out_w)/2")
+    x_offset = crop_map.get(choice_input, "(in_w-out_w)/2")
 
     video_files = list(source_dir.glob("*.mp4"))
     if not video_files: 
-        print("No source videos found.")
+        print("No video files found.")
         return
     video_input = video_files[0]
     
-    # Static 20 second duration as requested
     target_seconds = 20
-    final_output = output_dir / f"Quick_20s_{crop_choice.upper()}_{res_choice}.mp4"
+    final_output = output_dir / f"Vertical_Loop_20s_{res_choice}.mp4"
 
     try:
         _, fps = get_video_info(video_input)
 
-        print(f"\n🚀 Extracting 20 seconds with {crop_choice.upper()} crop...")
+        # --- CAPTION SETTINGS ---
+        # Note: 'fontsize=10' is very small in FFmpeg pixels. 
+        # I've set it to 80 for visibility, change to 10 only if you want it tiny.
+        font_style = "Arial Black"
+        font_size = 80 
+        border_width = 4 # Thicker border for Arial Black
         
-        # EFFICIENCY UPDATES:
-        # -ss 0: Fast seek to start
-        # -t 20: Stop exactly at 20 seconds
-        # -c:a copy: Pass-through original audio (zero quality loss, zero CPU usage)
-        # -preset ultrafast: Maximizes processing speed
-        
-        filter_complex = f"scale=-1:{target_h},crop={target_w}:{target_h}:{x_offset}:0,setsar=1"
+        text_x = "(w-text_w)/2"
+        text_y = "h*0.1"
+
+        img1_enable = "between(t,10,15)"
+        img2_enable = "1" 
+
+        # UPDATED FILTER COMPLEX
+        # Added font='Arial Black'
+        filter_complex = (
+            f"[0:v]scale=-1:{target_h},crop={target_w}:{target_h}:{x_offset}:0,setsar=1,"
+            f"drawtext=text='{user_caption}':font='{font_style}':fontcolor=white:fontsize={font_size}:"
+            f"x={text_x}:y={text_y}:borderw={border_width}:bordercolor=black:"
+            f"fix_bounds=1[base];"
+            f"[1:v]scale={target_w}:{target_h}[i1];"
+            f"[2:v]scale={target_w}:{target_h}[i2];"
+            f"[base][i1]overlay=0:0:enable='{img1_enable}'[temp];"
+            f"[temp][i2]overlay=0:0:enable='{img2_enable}'[vout]"
+        )
 
         subprocess.run([
             "ffmpeg", "-y",
-            "-ss", "0",                  # Seek to start
-            "-i", str(video_input),      # Input file
-            "-t", str(target_seconds),   # Limit duration to 20s
-            "-vf", filter_complex,       # Apply crop/scale
-            "-c:v", "libx264", 
-            "-crf", "18", 
-            "-preset", "ultrafast",      # Most efficient/fastest encoding
-            "-c:a", "copy",              # PRESERVE AUDIO (Copy stream)
+            "-ss", "0", "-i", str(video_input),
+            "-i", str(img1_path),
+            "-i", str(img2_path),
+            "-ss", "0", "-i", str(audio_path),
+            "-filter_complex", filter_complex,
+            "-map", "[vout]", 
+            "-map", "3:a",
+            "-t", str(target_seconds),
+            "-c:v", "libx264", "-crf", "18", "-preset", "ultrafast",
+            "-c:a", "aac", "-b:a", "192k",
             str(final_output)
         ], check=True)
 
-        print(f"\n✅ DONE! 20s Video Saved: {final_output}")
+        print(f"\n✅ DONE! Vertical Loop Saved: {final_output}")
 
     except Exception as e:
         print(f"\nAn error occurred: {e}")

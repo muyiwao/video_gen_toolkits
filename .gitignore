@@ -6,5 +6,6 @@ grok_script/movies/*
 
 rain_content/recorded/*
 rain_content/output/*
+rain_content/attachments/*
 
 
