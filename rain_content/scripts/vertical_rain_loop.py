@@ -71,7 +71,7 @@ def extract_quick_vertical():
         # Note: 'fontsize=10' is very small in FFmpeg pixels. 
         # I've set it to 80 for visibility, change to 10 only if you want it tiny.
         font_style = "Arial Black"
-        font_size = 80 
+        font_size = 90 # Adjusted for visibility; change to 10 if you want it tiny -> 80
         border_width = 4 # Thicker border for Arial Black
         
         text_x = "(w-text_w)/2"
