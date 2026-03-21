@@ -1,8 +1,8 @@
-muyverse_maths/curated/*
-muyverse_maths/post_ready/*
+math_content/raw/*
+math_content/processed/*
+math_content/attachments/*
 
 grok_script/movies/*
-
 
 rain_content/recorded/*
 rain_content/output/*
