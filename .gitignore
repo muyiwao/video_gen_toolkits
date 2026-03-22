@@ -1,5 +1,5 @@
 math_content/raw/*
-math_content/processed/*
+math_content/output/*
 math_content/attachments/*
 
 grok_script/movies/*

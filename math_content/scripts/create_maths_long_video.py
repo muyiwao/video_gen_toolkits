@@ -1,7 +1,7 @@
 import os
 from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
 
-VIDEO_FOLDER = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\muyverse_maths\curated"
+VIDEO_FOLDER = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\math_content\raw"
 TOTAL_VIDEOS = 20
 NUMBER_DURATION = 2
 FONT_SIZE = 200
