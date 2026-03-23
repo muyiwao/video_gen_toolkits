@@ -1,0 +1,106 @@
+import cv2
+import numpy as np
+from pathlib import Path
+
+# --- PATH CONFIGURATION ---
+VIDEO_DIR = Path(r'C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced')
+THUMB_OUT_DIR = Path(r'C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output')
+THUMB_OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+def apply_universal_rain_logic(image):
+    """
+    Universal logic that adapts to both indoor and outdoor scenes.
+    Uses an Environmental Mask to boost rain without making subjects 'shiny'.
+    """
+    # 1. High-Quality 2x Upscale
+    h, w = image.shape[:2]
+    image = cv2.resize(image, (w * 2, h * 2), interpolation=cv2.INTER_LANCZOS4)
+    
+    # 2. Environmental Isolation (The Universal Fix)
+    # We use a Median Blur to create a 'Subject Map' (removes small details like rain)
+    # Then we subtract it from the original to find ONLY the rain/highlights.
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    smooth_base = cv2.medianBlur(gray, 15) # This 'hides' the rain and keeps the person
+    
+    # Create the Rain-Only Mask (High-frequency details)
+    rain_detail_mask = cv2.absdiff(gray, smooth_base)
+    _, rain_detail_mask = cv2.threshold(rain_detail_mask, 15, 255, cv2.THRESH_BINARY)
+    
+    # 3. Subject Protection (Luma Mask)
+    # We protect mid-tones (usually skin/furniture) and only allow highlights 
+    # to pop in very bright or very dark areas.
+    subject_protection = cv2.inRange(gray, 40, 180) # Mid-tone range to protect
+    final_mask = cv2.bitwise_and(rain_detail_mask, cv2.bitwise_not(subject_protection))
+    final_mask = cv2.GaussianBlur(final_mask, (5, 5), 0).astype(np.float32) / 255.0
+
+    # 4. Apply Rain Sparkle
+    # Boost the bright pixels found in the mask
+    sparkle_layer = cv2.convertScaleAbs(image, alpha=1.4, beta=10)
+    image = (image * (1 - final_mask[:,:,np.newaxis]) + 
+             sparkle_layer * final_mask[:,:,np.newaxis]).astype(np.uint8)
+
+    # 5. Adaptive Contrast (CLAHE)
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    # clipLimit 1.5 is the 'sweet spot' for both indoor and outdoor
+    clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    image = cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
+
+    # 6. Cinematic Depth (Vignette)
+    rows, cols = image.shape[:2]
+    kernel_x = cv2.getGaussianKernel(cols, cols / 1.8)
+    kernel_y = cv2.getGaussianKernel(rows, rows / 1.8)
+    vignette = (kernel_y * kernel_x.T)
+    vignette = vignette / vignette.max()
+    vignette = cv2.addWeighted(vignette, 0.85, np.ones_like(vignette), 0.15, 0)
+    image = (image * vignette[:, :, np.newaxis]).astype("uint8")
+
+    return image
+
+def get_hero_frame(video_path):
+    cap = cv2.VideoCapture(str(video_path))
+    max_score, best_frame = -1, None
+    ret, f1 = cap.read()
+    if not ret: return None
+    g1 = cv2.cvtColor(f1, cv2.COLOR_BGR2GRAY)
+
+    # Scan for the frame with the sharpest droplet edges
+    for i in range(180):
+        ret, f2 = cap.read()
+        if not ret: break
+        if i % 4 == 0:
+            g2 = cv2.cvtColor(f2, cv2.COLOR_BGR2GRAY)
+            # Sobel detects edges (rain streaks) better than simple diff for thumbnails
+            edges = cv2.Sobel(cv2.absdiff(g1, g2), cv2.CV_64F, 1, 1, ksize=3)
+            score = np.sum(np.absolute(edges))
+            if score > max_score:
+                max_score, best_frame = score, f2.copy()
+            g1 = g2
+    cap.release()
+    return best_frame
+
+def crop_16_9(image):
+    h, w = image.shape[:2]
+    target = 16/9
+    if w/h > target:
+        nw = int(h * target)
+        s = (w - nw) // 2
+        return image[:, s:s+nw]
+    nh = int(w / target)
+    s = (h - nh) // 2
+    return image[s:s+nh, :]
+
+def generate_universal_thumbs():
+    print("🚀 Starting Universal Thumbnail Generation...")
+    for v in VIDEO_DIR.glob("*.mp4"):
+        raw = get_hero_frame(v)
+        if raw is not None:
+            # Crop to 16:9 -> Enhance -> Save
+            final = apply_universal_rain_logic(crop_16_9(raw))
+            out_path = THUMB_OUT_DIR / f"MASTER_THUMB_{v.stem}.jpg"
+            cv2.imwrite(str(out_path), final, [cv2.IMWRITE_JPEG_QUALITY, 100])
+            print(f"✅ Created: {out_path.name}")
+
+if __name__ == "__main__":
+    generate_universal_thumbs()
