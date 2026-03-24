@@ -20,13 +20,13 @@ def get_video_info(video_path):
 def extract_quick_vertical():
     # 1. Paths Configuration    
     source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
-    output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output")
+    output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output\output_shorts")
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # --- ASSET PATHS ---
     img1_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\shorts\subscribe-cta.png")
     img2_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\shorts\logo-cta.png")
-    audio_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\long\background_audio.mp3")
+    audio_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\rain-firecrack-thunder.mp3")
 
     # 2. Vertical Resolution Map (9:16)
     res_map = {
@@ -62,7 +62,8 @@ def extract_quick_vertical():
     video_input = video_files[0]
     
     target_seconds = 20
-    final_output = output_dir / f"Vertical_Loop_20s_{res_choice}.mp4"
+    choice_input_upper = choice_input.upper() if choice_input in ['l', 'c', 'r'] else "C"
+    final_output = output_dir / f"Vertical_Loop_{choice_input_upper}_20s_{res_choice}.mp4"
 
     try:
         _, fps = get_video_info(video_input)

@@ -70,7 +70,8 @@ def extract_quick_vertical():
     video_input = video_files[0]
     
     target_seconds = 20
-    final_output = output_dir / f"Vertical_Loop_{choice_input}_20s_{res_choice}.mp4"
+    choice_input_upper = choice_input.upper() if choice_input in ['l', 'c', 'r'] else "C"
+    final_output = output_dir / f"Vertical_Loop_{choice_input_upper}_20s_{res_choice}.mp4"
 
     try:
         print(f"🎬 Processing: {video_input.name}")
