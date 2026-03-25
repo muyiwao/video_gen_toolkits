@@ -8,9 +8,10 @@ rain_content/recorded/*
 rain_content/output/*
 rain_content/attachments/*
 
-
 science_content/raw_lessons/*
 science_content/output/*
 science_content/attachments/*
+
+output/*
 
 
