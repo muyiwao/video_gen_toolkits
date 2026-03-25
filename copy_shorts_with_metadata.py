@@ -5,7 +5,7 @@ from pathlib import Path
 
 def distribute_shorts_with_metadata():
     # 1. Paths Configuration
-    source_dir = Path("./rain_content/output/output_shorts")
+    source_dir = Path("./output/output_shorts")
     dest_base = Path("C:\\Project_Works\\MuyVerseProjects\\youtube-content-toolkit\\Shorts")
     
     # Supported video extensions
