@@ -1,10 +1,11 @@
 import subprocess
 import os
+import json
 
 # --- DIRECTORY CONFIGURATION ---
 ASSET_DIR = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\math_content\attachments\shorts"
 MAIN_V_DIR = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\math_content\raw_lessons"
-OUTPUT_DIR = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\math_content\output"
+OUTPUT_DIR = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_shorts"
 
 PATHS = {
     "v1":     os.path.join(ASSET_DIR, "intro_video.mp4"),
@@ -13,6 +14,15 @@ PATHS = {
     "img1":   os.path.join(ASSET_DIR, "background_with_logo.png"),
     "img2":   os.path.join(ASSET_DIR, "related_video_pointer.png"),
 }
+
+def get_duration(filename):
+    """Uses ffprobe to get the duration of a video file."""
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", filename],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT
+    )
+    return float(result.stdout)
 
 def parse_range(range_str):
     result = set()
@@ -47,13 +57,23 @@ def build_ffmpeg_command(main_v_path, output_path, caption_text, text_scale=100,
     video_pts = 1.0 / speed
     audio_speed_chain = get_audio_speed_filters(speed)
 
+    # --- DURATION CALCULATIONS ---
+    d_intro = get_duration(PATHS["v1"])
+    d_main_raw = get_duration(main_v_path)
+    d_outro = get_duration(PATHS["v3"])
+    
+    # The main video duration changes based on the speed factor
+    d_main_final = d_main_raw / speed
+    total_duration = d_intro + d_main_final + d_outro
+    
+    # LOGIC: Appear from start (0) until (Total Duration - 12 seconds)
+    caption_end_time = max(0, total_duration - 12)
+
     # CAPTION STYLING
-    # font='Open Sans': ensure this is installed on your OS.
-    # enable='lt(t,15)': Caption disappears after 15 seconds.
     drawtext_filter = (
-        f"drawtext=text='{caption_text}':font='Open Sans':fontcolor=white:fontsize=75:"
+        f"drawtext=text='{caption_text}':font='Open Sans':fontcolor=white:fontsize=60:"
         f"box=1:boxcolor=red@1.0:boxborderw=25:"
-        f"x=(w-text_w)/2:y=250:enable='lt(t,15)'" 
+        f"x=(w-text_w)/2:y=250:enable='lt(t,{caption_end_time:.2f})'" 
     )
 
     filter_complex = (
@@ -91,7 +111,6 @@ def build_ffmpeg_command(main_v_path, output_path, caption_text, text_scale=100,
     ]
 
 if __name__ == "__main__":
-    # --- GLOBAL PARAMETERS (Set once for the whole batch) ---
     try:
         range_input = input("Enter video numbers/ranges (e.g., 1-10): ")
         target_indices = parse_range(range_input)
@@ -106,20 +125,19 @@ if __name__ == "__main__":
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # --- BATCH PROCESSING LOOP ---
     for idx in target_indices:
         main_filename = f"{idx}.mp4"
         in_p = os.path.join(MAIN_V_DIR, main_filename)
         out_p = os.path.join(OUTPUT_DIR, main_filename)
 
         if os.path.exists(in_p):
-            print(f"\n🎬 Processing {main_filename} with caption: '{u_caption}'...")
+            print(f"\n🎬 Processing {main_filename}...")
             try:
                 subprocess.run(build_ffmpeg_command(in_p, out_p, u_caption, u_scale, u_speed), check=True)
                 print(f"✅ Success: {main_filename}")
-            except subprocess.CalledProcessError as e:
+            except subprocess.CalledProcessError:
                 print(f"❌ FFmpeg Error on {main_filename}")
         else:
-            print(f"⚠️ Skipping {main_filename}: File not found in {MAIN_V_DIR}")
+            print(f"⚠️ Skipping {main_filename}: File not found.")
 
-    print("\n✨ All videos in this batch are complete!")
+    print("\n✨ Batch processing complete!")
