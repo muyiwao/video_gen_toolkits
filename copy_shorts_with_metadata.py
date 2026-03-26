@@ -3,12 +3,26 @@ import shutil
 import json
 from pathlib import Path
 
+def parse_range_input(user_input):
+    """Parses '1', '1-3', or '4-7' into a list of integers."""
+    user_input = user_input.strip()
+    if "-" in user_input:
+        try:
+            start, end = map(int, user_input.split("-"))
+            if start > end:
+                return None
+            return list(range(start, end + 1))
+        except ValueError:
+            return None
+    elif user_input.isdigit():
+        return [int(user_input)]
+    return None
+
 def distribute_shorts_with_metadata():
     # 1. Paths Configuration
     source_dir = Path("./output/output_shorts")
-    dest_base = Path("C:\\Project_Works\\MuyVerseProjects\\youtube-content-toolkit\\Shorts")
+    dest_base = Path(r"C:\Project_Works\MuyVerseProjects\youtube-content-toolkit\Shorts")
     
-    # Supported video extensions
     video_extensions = {".mp4", ".mov", ".mkv", ".webm"}
 
     if not source_dir.exists():
@@ -20,33 +34,34 @@ def distribute_shorts_with_metadata():
         f for f in source_dir.iterdir() 
         if f.is_file() and f.suffix.lower() in video_extensions
     ]
-    
-    # Sort by creation time
     files.sort(key=lambda x: os.path.getctime(x))
 
     if not files:
         print("ℹ️ No video files found in source.")
         return
 
-    print(f"🚀 Found {len(files)} videos. Distributing and generating metadata...")
+    # 3. Runtime Range Input
+    print(f"\n🚀 Found {len(files)} videos in source.")
+    range_raw = input("📂 Enter destination folder range/number (e.g., 1, 1-3, 4-7): ").strip()
+    folder_range = parse_range_input(range_raw)
 
-    # 3. Process and Copy
-    for index, video_path in enumerate(files, start=1):
-        # Create destination folder: ./Shorts/1, ./Shorts/2, etc.
-        target_folder = dest_base / str(index)
+    if not folder_range:
+        print("❌ Invalid range format. Please use 'number' or 'start-end'.")
+        return
+
+    # 4. Process and Copy
+    # zip pairs each file with a folder number until one list runs out
+    processed_count = 0
+    for folder_num, video_path in zip(folder_range, files):
+        target_folder = dest_base / str(folder_num)
         target_folder.mkdir(parents=True, exist_ok=True)
         
-        # Define destination paths
         dest_video_path = target_folder / video_path.name
-        # Match the JSON filename exactly to the MP4 filename
         dest_json_path = target_folder / f"{video_path.stem}.json"
 
         try:
-            # A. Copy the Video file
             shutil.copy2(video_path, dest_video_path)
             
-            # B. Create the Empty JSON file with basic structure
-            # This ensures your upload script finds the required metadata
             metadata_template = {
                 "title": "",
                 "description": "#shorts #rain #cozy",
@@ -57,14 +72,13 @@ def distribute_shorts_with_metadata():
             with open(dest_json_path, 'w', encoding='utf-8') as f:
                 json.dump(metadata_template, f, indent=4)
 
-            print(f"✅ [{index}] Processed: {video_path.name}")
-            print(f"    - Moved to: {target_folder}")
-            print(f"    - Created:  {dest_json_path.name}")
+            print(f"✅ Folder {folder_num}: Processed {video_path.name}")
+            processed_count += 1
 
         except Exception as e:
-            print(f"⚠️ Error processing {video_path.name}: {e}")
+            print(f"⚠️ Error processing {video_path.name} into folder {folder_num}: {e}")
 
-    print("\n✨ All files distributed and metadata shells created.")
+    print(f"\n✨ Task Complete. {processed_count} files distributed across the specified range.")
 
 if __name__ == "__main__":
     distribute_shorts_with_metadata()
