@@ -20,7 +20,7 @@ def get_video_info(video_path):
 
 def create_ultra_long_loop():
     # 1. Paths Configuration
-    data_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output\output_shorts")
+    data_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output\output_live")
     data_dir.mkdir(parents=True, exist_ok=True)
     
     # --- AUDIO ASSET ONLY (Per previous request, images removed) ---
