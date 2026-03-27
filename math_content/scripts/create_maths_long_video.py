@@ -1,46 +1,114 @@
+import subprocess
 import os
-from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
+from pathlib import Path
 
-VIDEO_FOLDER = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\math_content\raw"
-TOTAL_VIDEOS = 20
-NUMBER_DURATION = 2
-FONT_SIZE = 200
-OUTPUT_FILE = os.path.join(VIDEO_FOLDER, "merged_output.mp4")
+# --- CONFIGURATION ---
+BASE_PATH = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\math_content")
+VIDEO_FOLDER = BASE_PATH / "raw_lessons"
+ASSET_DIR = BASE_PATH / "attachments" / "long"
+OUTPUT_DIR = BASE_PATH / "output" / "long_videos"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-clips = []
+# Assets
+V1 = ASSET_DIR / "intro_video.mp4"
+V2 = ASSET_DIR / "subscribe-cta.mp4"
+V3 = ASSET_DIR / "outtro_video.mp4"
+IMAGE_1 = ASSET_DIR / "background_with_logo.png"
 
-for i in range(1, TOTAL_VIDEOS + 1):
+OUTPUT_FILE = OUTPUT_DIR / "final_math_lesson_long.mp4"
+TEMP_DIR = BASE_PATH / "temp_segments"
+TEMP_DIR.mkdir(exist_ok=True)
 
-    video_path = os.path.join(VIDEO_FOLDER, f"{i}.mp4")
+def generate_number_video(number, output_path):
+    """Generates a 2-second clip with a centered number and silent audio."""
+    cmd = [
+        "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=1280x720:d=2",
+        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+        "-vf", f"drawtext=text='{number}':fontcolor=white:fontsize=200:x=(w-text_w)/2:y=(h-text_h)/2",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(output_path)
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    if not os.path.exists(video_path):
-        print(f"Missing file: {video_path}")
-        continue
+def create_full_video():
+    lesson_segments = []
 
-    video_clip = VideoFileClip(video_path)
+    print("🔢 Generating number intros (1-20)...")
+    for i in range(1, 21):
+        vid_path = VIDEO_FOLDER / f"{i}.mp4"
+        if vid_path.exists():
+            num_path = TEMP_DIR / f"num_{i}.mp4"
+            generate_number_video(i, num_path)
+            lesson_segments.append(num_path)
+            lesson_segments.append(vid_path)
 
-    number_text = TextClip(
-        text=str(i),
-        font_size=FONT_SIZE,
-        color="white",
-        size=video_clip.size
-    ).with_duration(NUMBER_DURATION)
+    if not lesson_segments:
+        print("❌ No lesson videos found in the source folder.")
+        return
 
-    number_clip = CompositeVideoClip(
-        [number_text.with_position("center")],
-        size=video_clip.size
-    ).with_duration(NUMBER_DURATION)
+    # 1. Merge all lessons into one temp file
+    concat_list = BASE_PATH / "temp_list.txt"
+    with open(concat_list, "w") as f:
+        for file in lesson_segments:
+            f.write(f"file '{file.resolve()}'\n")
 
-    clips.append(number_clip)
-    clips.append(video_clip)
+    temp_main_lesson = BASE_PATH / "temp_main_combined.mp4"
+    print("⚡ Step 1: Merging segments into master lesson...")
+    subprocess.run([
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list),
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-af", "aresample=async=1", "-c:a", "aac", str(temp_main_lesson)
+    ], check=True)
 
-final_video = concatenate_videoclips(clips)
+    # 2. Final Filter Graph
+    print("🚀 Step 2: Applying Background, Chroma Key, and Overlays...")
+    
+    # filter_complex breakdown:
+    # [0:v] Image 1 (Background)
+    # [1:v] Main combined video (Chroma keying black to transparent)
+    # [2:v] Subscribe CTA (Overlayed every 30s)
+    # [3:v] Intro Video (Beginning)
+    # [4:v] Outro Video (End)
+    
+    filter_complex = (
+        "[0:v]scale=1280:720,setsar=1[bg]; "
+        "[1:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,"
+        "colorkey=0x000000:0.1:0.1,setsar=1[lesson_transparent]; "
+        "[2:v]scale=350:-1[cta]; "
+        "[3:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1[intro_v]; "
+        "[4:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1[outro_v]; "
+        
+        "[bg][lesson_transparent]overlay=format=auto:shortest=1[main_bg_v]; "
+        "[main_bg_v][cta]overlay=W-w-20:H-h-20:enable='lt(mod(t,30),5)'[main_final_v]; "
+        
+        "[intro_v][3:a][main_final_v][1:a][outro_v][4:a]concat=n=3:v=1:a=1[v][a]"
+    )
 
-final_video.write_videofile(
-    OUTPUT_FILE,
-    codec="libx264",
-    audio_codec="aac",
-    fps=30
-)
+    final_cmd = [
+        "ffmpeg", "-y",
+        "-i", str(IMAGE_1),            # [0]
+        "-i", str(temp_main_lesson),    # [1]
+        "-i", str(V2),                 # [2]
+        "-i", str(V1),                 # [3]
+        "-i", str(V3),                 # [4]
+        "-filter_complex", filter_complex,
+        "-map", "[v]", "-map", "[a]",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+        "-c:a", "aac", "-ar", "48000", 
+        "-ac", "2",                     # FIXED: Now a string "2"
+        str(OUTPUT_FILE)
+    ]
 
-print("Finished creating merged video.")
+    try:
+        subprocess.run(final_cmd, check=True)
+        print(f"✨ Process Complete! Video saved: {OUTPUT_FILE}")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ FFmpeg Error: {e}")
+    finally:
+        # Cleanup
+        for f in TEMP_DIR.glob("*.mp4"): 
+            try: os.remove(f)
+            except: pass
+        if concat_list.exists(): os.remove(concat_list)
+        if temp_main_lesson.exists(): os.remove(temp_main_lesson)
+
+if __name__ == "__main__":
+    create_full_video()

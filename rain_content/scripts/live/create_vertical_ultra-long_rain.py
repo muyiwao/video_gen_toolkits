@@ -20,12 +20,11 @@ def get_video_info(video_path):
 
 def create_ultra_long_loop():
     # 1. Paths Configuration
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output\output_shorts")
-    output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output\output_shorts")
+    data_dir.mkdir(parents=True, exist_ok=True)
     
     # --- AUDIO ASSET ONLY (Per previous request, images removed) ---
-    audio_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\long\background_audio.mp3")
+    audio_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\rain-firecrack-thunder.mp3")
 
     # 2. Vertical Resolution Map (9:16)
     res_map = {
@@ -42,23 +41,23 @@ def create_ultra_long_loop():
     target_res = res_map.get(res_choice, "1080:1920")
 
     try:
-        target_minutes = int(input("Enter length in MINUTES: "))
+        target_minutes = int(input("Enter length in MINUTES (1min yield 4sec): "))
         target_seconds = target_minutes * 60
     except ValueError: 
         print("Invalid minute input.")
         return
 
-    video_files = list(source_dir.glob("*.mp4"))
+    video_files = list(data_dir.glob("*.mp4"))
     if not video_files: 
         print("No source videos found.")
         return
     video_input = video_files[0]
 
-    tile_file = output_dir / "temp_master_tile.mp4"
-    segment_file = output_dir / "temp_1min_segment.mp4"
-    temp_no_audio = output_dir / "temp_silent_final.mp4"
-    list_file = output_dir / "concat_list.txt"
-    final_output = output_dir / f"Vertical_Final_{res_choice}_{target_minutes}min.mp4"
+    tile_file = data_dir / "temp_master_tile.mp4"
+    segment_file = data_dir / "temp_1min_segment.mp4"
+    temp_no_audio = data_dir / "temp_silent_final.mp4"
+    list_file = data_dir / "concat_list.txt"
+    final_output = data_dir / f"Vertical_Final_{res_choice}_{target_minutes}min.mp4"
 
     try:
         duration, fps = get_video_info(video_input)

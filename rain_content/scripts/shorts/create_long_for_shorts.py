@@ -25,7 +25,7 @@ def create_ultra_long_loop():
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # --- AUDIO ASSET ONLY ---
-    audio_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\long\background_audio.mp3")
+    audio_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\rain-firecrack-thunder.mp3")
 
     # 2. User Inputs
     res_map = {
