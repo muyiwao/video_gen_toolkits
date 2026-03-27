@@ -1,6 +1,5 @@
 import subprocess
 import json
-import sys
 from pathlib import Path
 
 def get_video_info(video_path):
@@ -35,8 +34,8 @@ def extract_quick_vertical():
     output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output\output_shorts")
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    img1_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\shorts\subscribe-cta.png")
-    img2_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\shorts\logo.png")
+    # Path for the logo overlay
+    img_logo_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\shorts\logo.png")
 
     res_map = {
         "720p":  "720:1280",
@@ -78,38 +77,38 @@ def extract_quick_vertical():
         _, fps = get_video_info(video_input)
 
         font_style = "Arial Black"
-        font_size = int(target_h * 0.03) # Scale font size based on height for 4k/2k
+        font_size = int(target_h * 0.03) # Scale font size based on height
         border_width = max(2, int(font_size * 0.05))
         
         text_x = "(w-text_w)/2"
         text_y = "h*0.1"
 
-        img1_enable = "between(t,10,15)"
-        img2_enable = "1" 
-
-        # Using double quotes for the text to handle potential single quotes in captions
+        # Corrected Filter Graph:
+        # [0:v] is the video source. We scale/crop and add text to create [base].
+        # [1:v] is the logo. We scale it and then overlay it onto [base].
         filter_complex = (
             f"[0:v]scale=-1:{target_h},crop={target_w}:{target_h}:{x_offset}:0,setsar=1,"
             f"drawtext=text='{user_caption}':font='{font_style}':fontcolor=white:fontsize={font_size}:"
             f"x={text_x}:y={text_y}:borderw={border_width}:bordercolor=black:"
             f"fix_bounds=1[base];"
-            f"[1:v]scale={target_w}:{target_h}[i1];"
-            f"[2:v]scale={target_w}:{target_h}[i2];"
-            f"[base][i1]overlay=0:0:enable='{img1_enable}'[temp];"
-            f"[temp][i2]overlay=0:0:enable='{img2_enable}'[vout]"
+            f"[1:v]scale={target_w}:{target_h}[logo];"
+            f"[base][logo]overlay=0:0:enable='1'[vout]"
         )
 
         cmd = [
             "ffmpeg", "-y",
-            "-ss", "0", "-i", str(video_input),
-            "-i", str(img1_path),
-            "-i", str(img2_path),
+            "-ss", "0", 
+            "-i", str(video_input),     # Input index 0
+            "-i", str(img_logo_path),   # Input index 1
             "-filter_complex", filter_complex,
             "-map", "[vout]",
-            "-map", "0:a?", # Added '?' to make audio optional if source has none
+            "-map", "0:a?",             # Keep original audio if present
             "-t", str(target_seconds),
-            "-c:v", "libx264", "-crf", "18", "-preset", "ultrafast",
-            "-c:a", "aac", "-b:a", "192k",
+            "-c:v", "libx264", 
+            "-crf", "18", 
+            "-preset", "ultrafast",
+            "-c:a", "aac", 
+            "-b:a", "192k",
             str(final_output)
         ]
 
