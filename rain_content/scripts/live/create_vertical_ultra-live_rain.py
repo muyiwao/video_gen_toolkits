@@ -41,7 +41,7 @@ def create_ultra_long_loop():
     target_res = res_map.get(res_choice, "1080:1920")
 
     try:
-        target_minutes = int(input("Enter length in MINUTES (1min yield 4sec): "))
+        target_minutes = int(input("Enter length in MINUTES (3min yield 1min): "))
         target_seconds = target_minutes * 60
     except ValueError: 
         print("Invalid minute input.")
