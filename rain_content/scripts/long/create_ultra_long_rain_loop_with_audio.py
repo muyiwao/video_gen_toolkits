@@ -45,7 +45,7 @@ def create_ultra_long_loop():
     t_w, t_h = target_res.split(':')
 
     try:
-        target_minutes = int(input("Enter length in MINUTES: "))
+        target_minutes = int(input("Enter length in MINUTES (3min yield 1min): "))
         target_seconds = target_minutes * 60
     except ValueError: return
 
