@@ -4,14 +4,13 @@ from pathlib import Path
 
 def remove_black_background():
     # --- CONFIGURATION ---
-    # Update these placeholders to your actual folder paths
     source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input")
-    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\attachments")
+    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\math_content\raw_lessons")
     
     # Ensure destination exists
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # Supported extensionss
+    # Supported extensions
     video_exts = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
     image_exts = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff'}
 
@@ -26,21 +25,20 @@ def remove_black_background():
 
     for item in all_files:
         ext = item.suffix.lower()
-        # Output is ALWAYS .mov (for video) or .png (for images) to support transparency
+        
+        # We use item.name to keep the filename identical.
+        # Note: Videos MUST be .mov and Images MUST be .png to support transparency.
+        # If the input is already .mov or .png, the name remains 100% identical.
         if ext in video_exts:
-            output_file = dest_dir / f"{item.stem}_transparent.mov"
-            codec_args = ["-c:v", "png", "-pix_fmt", "rgba"] # High-quality transparency codec
+            output_file = dest_dir / f"{item.stem}.mov"
+            codec_args = ["-c:v", "png", "-pix_fmt", "rgba"] 
         else:
-            output_file = dest_dir / f"{item.stem}_transparent.png"
-            codec_args = ["-update", "1"] # Ensure image output is handled correctly
+            output_file = dest_dir / f"{item.stem}.png"
+            codec_args = ["-update", "1"] 
 
-        print(f"🎬 Processing: {item.name}...")
+        print(f"🎬 Processing: {item.name} -> {output_file.name}...")
 
         # --- FFmpeg Command ---
-        # colorkey=0x000000:0.1:0.1
-        # 0x000000 = Black
-        # 0.1 = Similarity (how close to black)
-        # 0.1 = Blend (smoothness of the edges)
         command = [
             "ffmpeg", "-y",
             "-i", str(item),
@@ -52,7 +50,7 @@ def remove_black_background():
         result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
         if result.returncode == 0:
-            print(f"✅ Saved to: {output_file.name}")
+            print(f"✅ Success: {output_file.name}")
         else:
             print(f"❌ Error processing {item.name}: {result.stderr.decode('utf-8')}")
 
