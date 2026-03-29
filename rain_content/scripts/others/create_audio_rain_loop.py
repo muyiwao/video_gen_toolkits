@@ -22,7 +22,7 @@ def get_audio_info(audio_path):
 def create_infinite_audio_loop():
     # 1. Paths Configuration
     source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\raw")
-    output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output")
+    output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\sound")
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # 2. Find Audio Source (Supports mp3, wav, m4a, or extraction from mp4)
