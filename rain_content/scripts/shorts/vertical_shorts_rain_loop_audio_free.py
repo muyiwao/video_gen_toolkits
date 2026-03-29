@@ -16,8 +16,6 @@ def get_video_info(video_path):
             raise ValueError("FFprobe returned empty output.")
             
         data = json.loads(result.stdout)
-        
-        # Accessing the stream data safely
         stream = data['streams'][0]
         fps_str = stream.get('r_frame_rate', '24/1')
         num, den = map(int, fps_str.split('/'))
@@ -47,6 +45,7 @@ def extract_quick_vertical():
     
     print("--- 20s Vertical Seamless Looper (Original Audio) ---")
     
+    # --- INPUTS ---
     res_choice = input("Enter resolution (default 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1080:1920")
     target_w, target_h = map(int, target_res.split(':'))
@@ -56,6 +55,9 @@ def extract_quick_vertical():
     print("\nSelect Crop Focus Area: [L] Left | [C] Center | [R] Right")
     choice_input = input("Choice: ").lower().strip()
     
+    # NEW: Ask for output filename
+    custom_name = input("\nEnter output filename (leave blank for default): ").strip()
+
     crop_map = {
         "l": "0",
         "c": "(in_w-out_w)/2",
@@ -69,16 +71,24 @@ def extract_quick_vertical():
         return
     video_input = video_files[0]
     
+    # --- FILENAME LOGIC ---
+    if custom_name:
+        # Ensure it has .mp4 extension
+        if not custom_name.lower().endswith(".mp4"):
+            custom_name += ".mp4"
+        final_output = output_dir / custom_name
+    else:
+        choice_input_upper = choice_input.upper() if choice_input in ['l', 'c', 'r'] else "C"
+        final_output = output_dir / f"Vertical_Loop_{choice_input_upper}_20s_{res_choice}.mp4"
+
     target_seconds = 20
-    choice_input_upper = choice_input.upper() if choice_input in ['l', 'c', 'r'] else "C"
-    final_output = output_dir / f"Vertical_Loop_{choice_input_upper}_20s_{res_choice}.mp4"
 
     try:
-        print(f"🎬 Processing: {video_input.name}")
+        print(f"\n🎬 Processing: {video_input.name}")
         _, fps = get_video_info(video_input)
 
         font_style = "Arial Black"
-        font_size = int(target_h * 0.03) # Scale font size based on height for 4k/2k
+        font_size = int(target_h * 0.03) 
         border_width = max(2, int(font_size * 0.05))
         
         text_x = "(w-text_w)/2"
@@ -87,7 +97,6 @@ def extract_quick_vertical():
         img1_enable = "between(t,10,15)"
         img2_enable = "1" 
 
-        # Using double quotes for the text to handle potential single quotes in captions
         filter_complex = (
             f"[0:v]scale=-1:{target_h},crop={target_w}:{target_h}:{x_offset}:0,setsar=1,"
             f"drawtext=text='{user_caption}':font='{font_style}':fontcolor=white:fontsize={font_size}:"
@@ -106,7 +115,7 @@ def extract_quick_vertical():
             "-i", str(img2_path),
             "-filter_complex", filter_complex,
             "-map", "[vout]",
-            "-map", "0:a?", # Added '?' to make audio optional if source has none
+            "-map", "0:a?", 
             "-t", str(target_seconds),
             "-c:v", "libx264", "-crf", "18", "-preset", "ultrafast",
             "-c:a", "aac", "-b:a", "192k",
