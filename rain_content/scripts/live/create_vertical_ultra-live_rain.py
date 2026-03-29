@@ -1,6 +1,7 @@
 import subprocess
 import json
 import math
+import os
 from pathlib import Path
 
 def get_video_info(video_path):
@@ -18,13 +19,33 @@ def get_video_info(video_path):
     duration = float(data['streams'][0]['duration'])
     return duration, fps
 
+def select_audio_file(audio_dir):
+    """Lists mp3 files and lets the user choose one."""
+    audio_files = list(audio_dir.glob("*.mp3"))
+    if not audio_files:
+        print(f"❌ No MP3 files found in {audio_dir}")
+        return None
+    
+    print("\n🎵 Available Audio Tracks:")
+    for i, file in enumerate(audio_files, 1):
+        print(f"{i}. {file.name}")
+    
+    while True:
+        try:
+            choice = int(input("\nSelect audio number: "))
+            if 1 <= choice <= len(audio_files):
+                return audio_files[choice - 1]
+            print("Invalid selection. Try again.")
+        except ValueError:
+            print("Please enter a number.")
+
 def create_ultra_long_loop():
     # 1. Paths Configuration
     data_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_live")
     data_dir.mkdir(parents=True, exist_ok=True)
     
-    # --- AUDIO ASSET ONLY (Per previous request, images removed) ---
-    audio_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\rain-firecrack-thunder.mp3")
+    # Path where your MP3s are stored
+    audio_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\sounds")
 
     # 2. Vertical Resolution Map (9:16)
     res_map = {
@@ -36,12 +57,18 @@ def create_ultra_long_loop():
     }
     
     print(f"--- Vertical Seamless Looper (Long Form) ---")
-    print(f"Available Resolutions: {', '.join(res_map.keys())}")
+    
+    # NEW: Audio Selection Phase
+    audio_path = select_audio_file(audio_base_dir)
+    if not audio_path:
+        return
+
+    print(f"\nAvailable Resolutions: {', '.join(res_map.keys())}")
     res_choice = input("Enter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1080:1920")
 
     try:
-        target_minutes = int(input("Enter length in MINUTES (3min yield 1min): "))
+        target_minutes = int(input("Enter length in MINUTES (3Mins Yield 1Min): "))
         target_seconds = target_minutes * 60
     except ValueError: 
         print("Invalid minute input.")
@@ -49,8 +76,9 @@ def create_ultra_long_loop():
 
     video_files = list(data_dir.glob("*.mp4"))
     if not video_files: 
-        print("No source videos found.")
+        print("No source videos found in output_live.")
         return
+    # Always picks the first mp4 in output_live as the loop source
     video_input = video_files[0]
 
     tile_file = data_dir / "temp_master_tile.mp4"
@@ -61,12 +89,10 @@ def create_ultra_long_loop():
 
     try:
         duration, fps = get_video_info(video_input)
-        # For a 5s clip, a 1s fade is perfect for rain.
         fade_dur = 1.0 
         loop_duration = duration - fade_dur
 
-        print(f"\n[1/4] Creating Vertical Seamless Tile...")
-        # Modified to ensure 9:16 scaling and centered crop
+        print(f"\n[1/4] Creating Vertical Seamless Tile from {video_input.name}...")
         filter_complex_tile = (
             f"[0:v]scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
             f"[over]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[fadein];"
@@ -87,6 +113,7 @@ def create_ultra_long_loop():
         tiles_needed = math.ceil(60 / loop_duration)
         with open(list_file, "w") as f:
             for _ in range(tiles_needed):
+                # Using tile_file.name for the concat list
                 f.write(f"file '{tile_file.name}'\n")
         
         subprocess.run([
@@ -106,7 +133,7 @@ def create_ultra_long_loop():
             str(temp_no_audio)
         ], check=True)
 
-        print(f"[4/4] Finalizing with Audio...")
+        print(f"[4/4] Finalizing with Audio: {audio_path.name}...")
         subprocess.run([
             "ffmpeg", "-y", 
             "-i", str(temp_no_audio), 
@@ -119,13 +146,16 @@ def create_ultra_long_loop():
             "-shortest", str(final_output)
         ], check=True)
 
-        print(f"\n✅ SUCCESS! Vertical Loop Saved: {final_output}")
+        print(f"\n✅ SUCCESS! Vertical Loop Saved: {final_output.name}")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
     finally:
+        # Final cleanup of temp files
         for temp in [tile_file, segment_file, list_file, temp_no_audio]:
-            if temp.exists(): temp.unlink()
+            if temp.exists():
+                try: temp.unlink()
+                except: pass
 
 if __name__ == "__main__":
     create_ultra_long_loop()
