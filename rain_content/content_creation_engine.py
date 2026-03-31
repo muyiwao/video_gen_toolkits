@@ -81,6 +81,7 @@ def process_long_content():
     target_res = res_map.get(res_choice, "1920:1080")
 
     try:
+        # Note: Calculation reference from previous query (3min source = 1min yield)
         target_minutes = int(input("Enter total length in MINUTES (3min yield 1min): "))
         target_seconds = target_minutes * 60
     except ValueError: return
@@ -124,10 +125,6 @@ def process_long_content():
         with open(list_file, "w") as f:
             for _ in range(target_minutes): f.write(f"file '{segment_file.name}'\n")
 
-        # filter_final breakdown:
-        # 1. Scale logo to fit target res.
-        # 2. Overlay logo top-left (enable after 5s).
-        # 3. Drawtext at bottom center (enable after 5s).
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,{start_time})'[v_logo];"
@@ -144,13 +141,15 @@ def process_long_content():
             "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
         ], check=True)
 
-        # [STAGE 4] Audio Mix
-        print(f"[4/4] Adding Audio Loop...")
+        # [STAGE 4] Audio Mix (Applying "long" Audio Profile)
+        print(f"[4/4] Adding Audio Loop with Filters...")
         subprocess.run([
             "ffmpeg", "-y", "-i", str(temp_no_audio), 
             "-stream_loop", "-1", "-i", str(audio_input),
             "-map", "0:v", "-map", "1:a", 
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", 
+            "-c:v", "copy", 
+            "-af", AUDIO_PROFILES["long"], # <--- Applied Audio Filter Here
+            "-c:a", "aac", "-b:a", "192k", "-shortest", 
             str(final_output)
         ], check=True)
 
