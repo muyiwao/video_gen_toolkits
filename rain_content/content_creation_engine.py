@@ -164,7 +164,9 @@ def process_long_content():
 
 def process_shorts_batch():
     """
-    Produces R, C, and L shorts with persistent logo and timed subscribe CTA.
+    Produces R, C, and L shorts. 
+    Refactor: Dynamically scales attachments to match video resolution 
+    while preserving original aspect ratio layout.
     """
     # --- 1. Path Configurations ---
     source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
@@ -210,19 +212,25 @@ def process_shorts_batch():
         font_path = "C\\:/Windows/Fonts/arialbd.ttf"
 
         # Stage 1: Visual Filter Chain
-        # [0:v] Main Video
-        # [1:v] logo-cta.png (Always on)
-        # [2:v] subscribe-cta.png (On at 15s)
+        # Fix: We scale the inputs [1:v] and [2:v] to match target_res 
+        # so they occupy the same relative space regardless of 720p/1080p/4k.
         filter_v = (
+            # 1. Prepare Main Video
             f"[0:v]scale=-1:{t_h},crop={t_w}:{t_h}:{cfg['offset']}:0,setsar=1,"
             f"drawtext=fontfile='{font_path}':text='{caption}':fontcolor=white:fontsize=90:"
             f"x=(w-text_w)/2:y=h*0.1:borderw=4:bordercolor=black[v_text];"
-            f"[v_text][1:v]overlay=0:0[v_logo];"
-            f"[v_logo][2:v]overlay=0:0:enable='between(t,15,20)'[v]"
+            
+            # 2. Scale Logo to fit video resolution and overlay
+            f"[1:v]scale={t_w}:{t_h}[logo_scaled];"
+            f"[v_text][logo_scaled]overlay=0:0[v_logo];"
+            
+            # 3. Scale Subscribe CTA to fit video resolution and overlay (timed)
+            f"[2:v]scale={t_w}:{t_h}[sub_scaled];"
+            f"[v_logo][sub_scaled]overlay=0:0:enable='between(t,15,20)'[v]"
         )
 
         try:
-            print(f"🎬 Rendering {custom_name} with overlays...")
+            print(f"🎬 Rendering {custom_name} with original-scale attachments...")
             subprocess.run([
                 "ffmpeg", "-y", 
                 "-stream_loop", "-1", "-i", str(video_input), # Input 0
@@ -232,7 +240,7 @@ def process_shorts_batch():
                 "-filter_complex", filter_v, 
                 "-af", AUDIO_PROFILES[cfg['profile']],
                 "-map", "[v]", 
-                "-map", "3:a", # Map the audio from Input 3
+                "-map", "3:a", 
                 "-t", "20", 
                 "-c:v", "libx264", "-crf", "20", "-preset", "veryfast",
                 "-c:a", "aac", "-b:a", "192k", 
