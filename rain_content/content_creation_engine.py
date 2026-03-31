@@ -54,76 +54,128 @@ AUDIO_PROFILES = {
 # --- PROCESSING MODULES ---
 
 def process_long_content():
+    # 1. Paths Configuration
     source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
-    audio_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\sounds")
     asset_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\long")
     output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_long")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    audio_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\sounds")
     
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- ASSET PATHS ---
+    img_logo_path = asset_dir / "screen-logo.png"
+    
+    # Selection helpers
     video_input = select_video_file(source_dir)
     audio_input = select_audio_file(audio_base_dir)
     if not video_input or not audio_input: return
 
-    res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", "2k": "2560:1440", "4k": "3840:2160"}
-    res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
-    target_res = res_map.get(res_choice, "1920:1080")
+    # 2. Resolution & Length Setup
+    res_map = {
+        "480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", 
+        "2k": "2560:1440", "4k": "3840:2160"
+    }
     
-    target_minutes = int(input("Enter length in MINUTES (4mins yields 1min content): "))
-    target_seconds = target_minutes * 60
+    print(f"Available Resolutions: {', '.join(res_map.keys())}")
+    res_choice = input("Enter resolution (e.g., 1080p): ").lower().strip()
+    target_res = res_map.get(res_choice, "1920:1080")
 
+    try:
+        target_minutes = int(input("Enter total length in MINUTES (4min yield 1min): "))
+        target_seconds = target_minutes * 60
+    except ValueError: return
+
+    # File Paths
     tile_file = output_dir / "temp_master_tile.mp4"
     segment_file = output_dir / "temp_1min_segment.mp4"
     temp_no_audio = output_dir / "temp_silent_final.mp4"
     list_file = output_dir / "concat_list.txt"
-    final_output = output_dir / f"Final_Long_{res_choice}_{target_minutes}min.mp4"
+    final_output = output_dir / f"Final_Rain_{res_choice}_{target_minutes}min.mp4"
+
+    # --- TEXT CONFIGURATION ---
+    sub_text = "More rain content is on the way; subscribe so you never miss a moment of calm"
+    text_color = "0x5cf629" # Hex converted for FFmpeg
+    start_time = 5
 
     try:
         duration, fps = get_video_info(video_input)
         fade_dur = 1.0 if duration > 3 else 0.5
         loop_duration = duration - fade_dur
 
-        # Stage 1: Seamless Tile
-        filter_tile = (f"[0:v]scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
-                       f"[over]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[fadein];"
-                       f"[main]trim=start={fade_dur},setpts=PTS-STARTPTS[base];"
-                       f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={fade_dur}:alpha=1[alpha_fade];"
-                       f"[base][alpha_fade]overlay=x=0:y=0:shortest=1[v]")
-        subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-r", str(fps), "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
+        # [STAGE 1] Seamless Tile
+        print(f"\n[1/4] Creating Seamless Tile...")
+        filter_tile = (
+            f"[0:v]scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
+            f"[over]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[fadein];"
+            f"[main]trim=start={fade_dur},setpts=PTS-STARTPTS[base];"
+            f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={fade_dur}:alpha=1[alpha_fade];"
+            f"[base][alpha_fade]overlay=x=0:y=0:shortest=1[v]"
+        )
+        subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
 
-        # Stage 2: 1-min segment
+        # [STAGE 2] 1-Minute Building Block
         tiles_needed = math.ceil(60 / loop_duration)
         with open(list_file, "w") as f:
             for _ in range(tiles_needed): f.write(f"file '{tile_file.name}'\n")
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
-        # Stage 3: Full Assembly
+        # [STAGE 3] Assembly with Logo and Subscription Text
+        print(f"[3/4] Adding Visual Assets (Logo & Text)...")
         with open(list_file, "w") as f:
             for _ in range(target_minutes): f.write(f"file '{segment_file.name}'\n")
-        
-        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-t", str(target_seconds), "-c", "copy", str(temp_no_audio)], check=True)
 
-        # Stage 4: Add Filtered Audio (Deep & Stable)
-        print(f"🔊 Processing Unique Audio Profile: Long Form")
+        # filter_final breakdown:
+        # 1. Scale logo to fit target res.
+        # 2. Overlay logo top-left (enable after 5s).
+        # 3. Drawtext at bottom center (enable after 5s).
+        filter_final = (
+            f"[1:v]scale={target_res}[logo_sc];"
+            f"[0:v][logo_sc]overlay=0:0:enable='gt(t,{start_time})'[v_logo];"
+            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=20:fontcolor={text_color}:"
+            f"x=(w-text_w)/2:y=h-th-40:enable='gt(t,{start_time})':"
+            f"shadowcolor=black@0.6:shadowx=2:shadowy=2[vout]"
+        )
+
         subprocess.run([
-            "ffmpeg", "-y", "-i", str(temp_no_audio), "-stream_loop", "-1", "-i", str(audio_input),
-            "-af", AUDIO_PROFILES["long"], "-map", "0:v", "-map", "1:a", 
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", str(final_output)
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
+            "-i", str(img_logo_path),
+            "-filter_complex", filter_final,
+            "-map", "[vout]", "-t", str(target_seconds),
+            "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
         ], check=True)
 
+        # [STAGE 4] Audio Mix
+        print(f"[4/4] Adding Audio Loop...")
+        subprocess.run([
+            "ffmpeg", "-y", "-i", str(temp_no_audio), 
+            "-stream_loop", "-1", "-i", str(audio_input),
+            "-map", "0:v", "-map", "1:a", 
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", 
+            str(final_output)
+        ], check=True)
+
+        print(f"\n✅ SUCCESS! Output: {final_output}")
+
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
     finally:
-        for f in [tile_file, segment_file, list_file, temp_no_audio]: 
-            if f.exists(): f.unlink()
+        for temp in [tile_file, segment_file, list_file, temp_no_audio]:
+            if temp.exists(): temp.unlink()
 
 def process_shorts_batch():
     """
-    Produces R, C, and L shorts with unique visual crops and audio profiles.
-    Fixes: Path parsing errors in drawtext filter on Windows.
+    Produces R, C, and L shorts with persistent logo and timed subscribe CTA.
     """
     # --- 1. Path Configurations ---
     source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
     audio_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\sounds")
+    asset_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\shorts")
     output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_shorts")
     output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Attachment Paths
+    logo_cta = asset_dir / "logo-cta.png"
+    sub_cta = asset_dir / "subscribe-cta.png"
     
     # --- 2. Runtime Selections ---
     video_input = select_video_file(source_dir)
@@ -155,29 +207,32 @@ def process_shorts_batch():
         caption = input(f"💬 Enter caption for {label} version: ").strip()
         final_output = output_dir / custom_name
         
-        # FIX: The 'Golden Rule' for Windows Font paths in FFmpeg:
-        # 1. Use forward slashes /
-        # 2. Escape the colon with a single backslash \:
         font_path = "C\\:/Windows/Fonts/arialbd.ttf"
 
-        # Stage 1: Visual Filter (Scale, Crop, Text)
-        # Note the [v] is separated by a semicolon at the end of the chain
+        # Stage 1: Visual Filter Chain
+        # [0:v] Main Video
+        # [1:v] logo-cta.png (Always on)
+        # [2:v] subscribe-cta.png (On at 15s)
         filter_v = (
             f"[0:v]scale=-1:{t_h},crop={t_w}:{t_h}:{cfg['offset']}:0,setsar=1,"
             f"drawtext=fontfile='{font_path}':text='{caption}':fontcolor=white:fontsize=90:"
-            f"x=(w-text_w)/2:y=h*0.1:borderw=4:bordercolor=black[v]"
+            f"x=(w-text_w)/2:y=h*0.1:borderw=4:bordercolor=black[v_text];"
+            f"[v_text][1:v]overlay=0:0[v_logo];"
+            f"[v_logo][2:v]overlay=0:0:enable='between(t,15,20)'[v]"
         )
 
         try:
-            print(f"🎬 Rendering {custom_name}...")
+            print(f"🎬 Rendering {custom_name} with overlays...")
             subprocess.run([
                 "ffmpeg", "-y", 
-                "-stream_loop", "-1", "-i", str(video_input), 
-                "-stream_loop", "-1", "-i", str(audio_input), 
+                "-stream_loop", "-1", "-i", str(video_input), # Input 0
+                "-i", str(logo_cta),                           # Input 1
+                "-i", str(sub_cta),                            # Input 2
+                "-stream_loop", "-1", "-i", str(audio_input), # Input 3
                 "-filter_complex", filter_v, 
                 "-af", AUDIO_PROFILES[cfg['profile']],
                 "-map", "[v]", 
-                "-map", "1:a", 
+                "-map", "3:a", # Map the audio from Input 3
                 "-t", "20", 
                 "-c:v", "libx264", "-crf", "20", "-preset", "veryfast",
                 "-c:a", "aac", "-b:a", "192k", 
@@ -186,21 +241,22 @@ def process_shorts_batch():
             print(f"✅ Success: {final_output.name}")
 
         except subprocess.CalledProcessError as e:
-            print(f"❌ FFmpeg failed on variant {label}. Check your caption or paths.")
+            print(f"❌ FFmpeg failed on variant {label}. Check paths or assets.")
             continue
 
-    print(f"\n✨ All tasks complete. Check: {output_dir}")
+    print(f"\n✨ Batch complete. Files saved to: {output_dir}")
 
 def process_live_content():
     """
     Optimized Live Content Generator:
-    1. Fixes the 'still video' issue by looping the video stream.
-    2. Uses a 2-stage assembly for maximum speed (Tile -> Concat).
-    3. Handles both Vertical and Horizontal cropping.
+    1. Fixes missing logo by using -loop 1 on image inputs.
+    2. Explicitly scales logos within the filter chain to match target res.
+    3. Maintains 2-stage assembly for speed.
     """
     # 1. Path Configurations
     source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
     audio_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\sounds")
+    live_asset_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\live")
     output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_live")
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -219,21 +275,34 @@ def process_live_content():
     ar_choice = input("Selection (1-2): ").strip()
     res_choice = input("Enter resolution (e.g., 1080p): ").lower().strip()
     
-    target_minutes = int(input("Enter final length in MINUTES: "))
+    target_minutes = int(input("Enter final length in MINUTES (1min yield 1min): "))
     target_seconds = target_minutes * 60
 
     # Resolution Maps
     h_res = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", "2k": "2560:1440", "4k": "3840:2160"}
     v_res = {"480p": "480:854", "720p": "720:1280", "1080p": "1080:1920", "2k": "1440:2560", "4k": "2160:3840"}
 
-    # 4. Filter Configuration
+    # 4. Filter Configuration with Explicit Scaling
     if ar_choice == '2':
         res = v_res.get(res_choice, "1080:1920")
         t_w, t_h = res.split(':')
-        crop_filter = f"scale=-1:{t_h},crop={t_w}:{t_h}:(in_w-out_w)/2:0,setsar=1"
+        logo_path = live_asset_dir / "screen-logo_9_16.png"
+        # Scale video to vertical, then overlay scaled logo
+        filter_complex = (
+            f"[0:v]scale=-1:{t_h},crop={t_w}:{t_h}:(in_w-out_w)/2:0,setsar=1[bg];"
+            f"[1:v]scale={t_w}:{t_h}[l_scaled];"
+            f"[bg][l_scaled]overlay=0:0:enable='gt(t,5)'[v]"
+        )
     else:
         res = h_res.get(res_choice, "1920:1080")
-        crop_filter = f"scale={res}:force_original_aspect_ratio=increase,crop={res},setsar=1"
+        t_w, t_h = res.split(':')
+        logo_path = live_asset_dir / "screen-logo_16_9.png"
+        # Scale video to horizontal, then overlay scaled logo
+        filter_complex = (
+            f"[0:v]scale={res}:force_original_aspect_ratio=increase,crop={res},setsar=1[bg];"
+            f"[1:v]scale={t_w}:{t_h}[l_scaled];"
+            f"[bg][l_scaled]overlay=0:0:enable='gt(t,5)'[v]"
+        )
 
     # Temporary files
     tile_file = output_dir / "temp_live_tile.mp4"
@@ -241,20 +310,20 @@ def process_live_content():
     final_output = output_dir / custom_name
 
     try:
-        # --- STAGE 1: Create a high-quality 1-minute looped tile ---
-        # This is the ONLY time we do heavy video encoding.
-        print(f"\n[1/2] Encoding 1-minute master tile...")
+        # --- STAGE 1: Create Master Tile ---
+        print(f"\n[1/2] Encoding 1-minute master tile with logo...")
         subprocess.run([
             "ffmpeg", "-y", 
             "-stream_loop", "-1", "-i", str(video_input), 
-            "-vf", crop_filter, 
-            "-t", "60", 
+            "-loop", "1", "-i", str(logo_path),  # FIX: -loop 1 makes the image persistent
+            "-filter_complex", filter_complex,
+            "-map", "[v]",
+            "-t", "60", # The master tile is 1 minute
             "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-an", 
             str(tile_file)
         ], check=True)
 
-        # --- STAGE 2: Instant Assembly ---
-        # We 'stitch' the 1-minute tiles and add the audio simultaneously.
+        # --- STAGE 2: Final Assembly ---
         print(f"[2/2] Assembling {target_minutes}m video (Stream Copying)...")
         
         with open(list_file, "w") as f:
@@ -266,8 +335,8 @@ def process_live_content():
             "-f", "concat", "-safe", "0", "-i", str(list_file), 
             "-stream_loop", "-1", "-i", str(audio_input),
             "-map", "0:v", "-map", "1:a",
-            "-c:v", "copy",                     # <--- INSTANT: No re-encoding video
-            "-af", AUDIO_PROFILES["live"],      # Process audio uniquely
+            "-c:v", "copy", 
+            "-af", AUDIO_PROFILES["live"], 
             "-c:a", "aac", "-b:a", "192k",
             "-t", str(target_seconds),
             "-shortest", str(final_output)
@@ -276,7 +345,6 @@ def process_live_content():
         print(f"\n✅ Done! File saved: {final_output}")
 
     finally:
-        # Cleanup
         if tile_file.exists(): tile_file.unlink()
         if list_file.exists(): list_file.unlink()
 
