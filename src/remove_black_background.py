@@ -32,14 +32,19 @@ def remove_black_background():
         print(f"{idx}. {f.name}")
     print("A. Process All Files")
 
-    file_choice = input("\nSelect file number or 'A': ").strip().upper()
-    
-    to_process = files if file_choice == 'A' else [files[int(file_choice)-1]]
+    try:
+        file_choice = input("\nSelect file number or 'A': ").strip().upper()
+        to_process = files if file_choice == 'A' else [files[int(file_choice)-1]]
+    except (ValueError, IndexError):
+        print("❌ Invalid selection.")
+        return
 
-    # 3. Filter Chain
-    # colorkey removes black, scale fits the frame, pad centers it with transparency
+    # 3. Filter Chain Logic
+    # We use 'colorkey' to turn black into transparency.
+    # We use 'format=rgba' to ensure the internal engine is processing 4 channels (Red, Green, Blue, Alpha).
     vf_chain = (
         f"colorkey=0x000000:0.1:0.1,"
+        f"format=rgba,"
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x00000000"
     )
@@ -48,10 +53,12 @@ def remove_black_background():
         ext = item.suffix.lower()
         
         if ext in video_exts:
-            # Outputting as .mp4 using HEVC with Alpha support
-            output_file = dest_dir / f"{item.stem}_{ar_name}.mp4"
-            # libx265 with pixel format yuva420p allows transparency in mp4
-            codec_args = ["-c:v", "libx265", "-pix_fmt", "yuva420p", "-tag:v", "hvc1"]
+            # SWITCHED TO .MOV (QuickTime RLE) - This is the most stable format for transparency
+            output_file = dest_dir / f"{item.stem}_{ar_name}.mov"
+            codec_args = [
+                "-c:v", "qtrle",      # QuickTime Animation codec (Supports Alpha perfectly)
+                "-pix_fmt", "argb"    # Standard pixel format for transparent MOV
+            ]
         else:
             output_file = dest_dir / f"{item.stem}_{ar_name}.png"
             codec_args = ["-update", "1"]
@@ -66,14 +73,15 @@ def remove_black_background():
             str(output_file)
         ]
 
-        result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        # Use stderr=subprocess.PIPE to catch errors if they happen
+        result = subprocess.run(command, capture_output=True, text=True)
 
         if result.returncode == 0:
-            print(f"✅ Success: Saved to {dest_dir}")
+            print(f"✅ Success: Saved to {output_file}")
         else:
-            print(f"❌ Error: {result.stderr.decode('utf-8')}")
+            print(f"❌ FFmpeg Error: {result.stderr}")
 
-    print("\n✨ Processing complete.")
+    print("\n✨ Processing complete. Use VLC Player or a Video Editor to view these files.")
 
 if __name__ == "__main__":
     remove_black_background()
