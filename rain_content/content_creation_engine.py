@@ -81,7 +81,7 @@ def process_long_content():
     target_res = res_map.get(res_choice, "1920:1080")
 
     try:
-        target_minutes = int(input("Enter total length in MINUTES (4min yield 1min): "))
+        target_minutes = int(input("Enter total length in MINUTES (3min yield 1min): "))
         target_seconds = target_minutes * 60
     except ValueError: return
 
