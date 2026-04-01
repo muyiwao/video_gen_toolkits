@@ -4,7 +4,7 @@ from pathlib import Path
 
 # --- PATH CONFIGURATION ---
 VIDEO_DIR = Path(r'C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced')
-THUMB_OUT_DIR = Path(r'C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\output')
+THUMB_OUT_DIR = Path(r'C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_long')
 THUMB_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def apply_universal_rain_logic(image):
