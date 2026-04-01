@@ -5,8 +5,8 @@ from pathlib import Path
 
 def extract_frames():
     # --- 1. Define Paths ---
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\raw")
-    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input")
+    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input")
+    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\images")
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     # --- 2. File Selection ---
@@ -17,65 +17,61 @@ def extract_frames():
 
     print("\n--- High-Quality Frame Extraction Tool ---")
     
-    # --- 3. Resolution Selection (Runtime) ---
+    # --- 3. Resolution Selection ---
     print("\nSelect Output Resolution:")
-    print("1. 1080p (1920x1080)")
-    print("2. 2K (2560x1440)")
-    print("3. 4K (3840x2160)")
-    print("4. Custom (Width:Height)")
-    
+    print("1. 1080p (1920x1080) | 2. 2K (2560x1440) | 3. 4K (3840x2160) | 4. Custom")
     res_choice = input("Selection (1-4): ").strip()
     
-    res_map = {
-        "1": "1920:1080",
-        "2": "2560:1440",
-        "3": "3840:2160"
-    }
-    
-    if res_choice == "4":
-        target_res = input("Enter custom resolution (e.g., 5120:2880): ").strip()
-    else:
-        target_res = res_map.get(res_choice, "2560:1440")
-
+    res_map = {"1": "1920:1080", "2": "2560:1440", "3": "3840:2160"}
+    target_res = res_map.get(res_choice, input("Enter custom res (W:H): ") if res_choice == "4" else "2560:1440")
     t_w, t_h = target_res.split(":")
 
     # --- 4. Extraction Mode ---
     print("\nSelect Extraction Mode:")
-    print("1. Batch Mode (Every X seconds/minutes)")
+    print("1. Batch Mode (Every X seconds)")
     print("2. Single Frame (Specific timestamp)")
     mode = input("Select mode (1/2): ").strip()
 
-    # Optimized Visual Filter Chain:
-    # flags=lanczos: Best quality upscaling algorithm
-    # force_original_aspect_ratio=increase + crop: Ensures the target frame is filled perfectly
     vf_chain = f"scale={target_res}:force_original_aspect_ratio=increase:flags=lanczos,crop={t_w}:{t_h},setsar=1"
 
     for video in video_files:
-        print(f"\nProcessing: {video.name}...")
+        print(f"\n--- Processing: {video.name} ---")
         
+        # --- NEW: Range Selection Logic ---
+        print("Set Time Range (Press ENTER for entire video)")
+        start_t = input("  Start Time (HH:MM:SS or seconds): ").strip()
+        end_t = input("  End Time (HH:MM:SS or seconds): ").strip()
+
+        # Build time range arguments
+        time_args = []
+        if start_t: time_args += ["-ss", start_t]
+        if end_t:   time_args += ["-to", end_t]
+
         if mode == '1':
             # --- BATCH MODE ---
             try:
-                interval = float(input(f"  Enter interval in SECONDS for {video.name} (e.g., 60): "))
+                interval = float(input(f"  Enter interval in SECONDS (e.g., 60): "))
             except ValueError:
                 print("  Invalid input, skipping batch...")
                 continue
             
             output_pattern = dest_dir / f"{video.stem}_{t_h}p_batch_%03d.png"
+            
+            # Note: We put time_args BEFORE -i for faster seeking on the start point
             command = [
-                "ffmpeg", "-y", "-i", str(video),
+                "ffmpeg", "-y"
+            ] + time_args + [
+                "-i", str(video),
                 "-vf", f"fps=1/{interval},{vf_chain}",
                 "-q:v", "2", str(output_pattern)
             ]
 
         else:
             # --- SINGLE FRAME MODE ---
-            timestamp = input(f"  Enter timestamp for {video.name} (HH:MM:SS): ").strip()
-            # Clean filename by replacing colon with dash
+            timestamp = input(f"  Enter specific timestamp (HH:MM:SS): ").strip()
             safe_ts = timestamp.replace(':', '-')
             output_file = dest_dir / f"{video.stem}_{t_h}p_frame_{safe_ts}.png"
             
-            # Fast-seek (-ss before -i) for instant extraction
             command = [
                 "ffmpeg", "-y", 
                 "-ss", timestamp, 
