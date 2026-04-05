@@ -47,10 +47,11 @@ def produce_synced_shorts():
         video_path = video_files[i]
         audio_path = audio_files[i]
         
+        # Modified order: Right, Center, Left
         crops = [
-            ("Left", "0"),
+            ("Right", "in_w-out_w"),
             ("Center", "(in_w-out_w)/2"),
-            ("Right", "in_w-out_w")
+            ("Left", "0")
         ]
 
         for pos_label, offset in crops:
