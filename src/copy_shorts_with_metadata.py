@@ -29,12 +29,11 @@ def distribute_shorts_with_metadata():
         print(f"❌ Source directory not found: {source_dir}")
         return
 
-    # 2. Get and Sort Files by Creation Time (Oldest to Newest)
+    # 2. Get and Sort Files by Creation Time
     files = [
         f for f in source_dir.iterdir() 
         if f.is_file() and f.suffix.lower() in video_extensions
     ]
-    # Sorting by creation time ensures the first video rendered goes to the first folder
     files.sort(key=lambda x: os.path.getctime(x))
 
     if not files:
@@ -50,22 +49,25 @@ def distribute_shorts_with_metadata():
         print("❌ Invalid range format. Please use 'number' or 'start-end'.")
         return
 
-    # 4. Process and Move
+    # 4. Process, Move, and Cleanup
     processed_count = 0
-    # zip pairs each file with a folder number until one list runs out
     for folder_num, video_path in zip(folder_range, files):
         target_folder = dest_base / str(folder_num)
         target_folder.mkdir(parents=True, exist_ok=True)
         
         dest_video_path = target_folder / video_path.name
         dest_json_path = target_folder / f"{video_path.stem}.json"
+        
+        # Identify the source JSON file created by the rendering script
+        source_json_path = video_path.with_suffix(".json")
 
         try:
-            # CHANGED: shutil.move effectively "cuts" from source and "pastes" to destination
+            # Move the video file
             shutil.move(str(video_path), str(dest_video_path))
             
+            # Generate the metadata for the destination
             metadata_template = {
-                "title": video_path.stem.replace("_", " "), # Simple title fix based on filename
+                "title": video_path.stem.replace("_", " "),
                 "description": "#shorts #rain #cozy #ambient",
                 "tags": ["rain", "shorts", "ambient", "cozy"],
                 "privacyStatus": "public"
@@ -74,13 +76,21 @@ def distribute_shorts_with_metadata():
             with open(dest_json_path, 'w', encoding='utf-8') as f:
                 json.dump(metadata_template, f, indent=4)
 
-            print(f"✅ Folder {folder_num}: Moved {video_path.name}")
+            # --- NEW CLEANUP LOGIC ---
+            # If a source JSON file exists in output_shorts, delete it
+            if source_json_path.exists():
+                os.remove(source_json_path)
+                cleanup_msg = " (Source JSON deleted)"
+            else:
+                cleanup_msg = ""
+
+            print(f"✅ Folder {folder_num}: Moved {video_path.name}{cleanup_msg}")
             processed_count += 1
 
         except Exception as e:
-            print(f"⚠️ Error moving {video_path.name} into folder {folder_num}: {e}")
+            print(f"⚠️ Error processing {video_path.name} for folder {folder_num}: {e}")
 
-    print(f"\n✨ Task Complete. {processed_count} files moved and metadata generated.")
+    print(f"\n✨ Task Complete. {processed_count} videos processed and source cleanup finished.")
 
 if __name__ == "__main__":
     distribute_shorts_with_metadata()
