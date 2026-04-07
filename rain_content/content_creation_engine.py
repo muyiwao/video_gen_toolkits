@@ -128,7 +128,7 @@ def process_long_content():
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,{start_time})'[v_logo];"
-            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=20:fontcolor={text_color}:"
+            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=22:fontcolor={text_color}:"
             f"x=(w-text_w)/2:y=h-th-40:enable='gt(t,{start_time})':"
             f"shadowcolor=black@0.6:shadowx=2:shadowy=2[vout]"
         )
