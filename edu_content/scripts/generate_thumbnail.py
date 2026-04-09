@@ -7,7 +7,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 # --- Configuration ---
 BASE_PATH = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
-ASSET_DIR = BASE_PATH / "math_content" / "attachments" / "long"
 TEMPLATE_FILENAME = "thumbnail-template.png"
 OUTPUT_DIR = BASE_PATH / "output" / "output_long"
 
@@ -18,16 +17,30 @@ FONT_PATH = r"C:\Windows\Fonts\arialbd.ttf"
 DEFAULT_FONT_SIZE = 500 
 CAPTION_COLOR = (255, 255, 255) # White
 
+def get_category_path():
+    """
+    Prompts the user to select a category and returns the appropriate ASSET_DIR.
+    """
+    while True:
+        choice = input("📂 Select category (math/science): ").strip().lower()
+        if choice in ['math', 'science']:
+            path = BASE_PATH / "edu_content" / "attachments" / choice / "long"
+            if (path / TEMPLATE_FILENAME).exists():
+                return path
+            else:
+                print(f"⚠️ Template not found in {choice} folder. Check path: {path}")
+        else:
+            print("❌ Invalid choice. Please type 'math' or 'science'.")
+
 def generate_thumbnail_with_caption():
     """
     Generates high-impact thumbnails with massive, bold centered text.
     """
     print("\n--- Youtube Massive Bold Caption Generator ---")
     
-    template_path = ASSET_DIR / TEMPLATE_FILENAME
-    if not template_path.exists():
-        print(f"❌ Template file not found at {template_path}")
-        return
+    # Dynamically select the asset directory
+    asset_dir = get_category_path()
+    template_path = asset_dir / TEMPLATE_FILENAME
 
     while True:
         raw_caption = input("\n💬 Enter caption (or Enter to exit): ").strip()
@@ -43,14 +56,10 @@ def generate_thumbnail_with_caption():
                 w_img, h_img = template_img.size
                 
                 # --- IMPACT OPTIMIZATION ---
-                # We want the text to occupy 90% of the width and 80% of the height
                 max_w_const = int(w_img * 0.9)
                 max_h_const = int(h_img * 0.8)
                 
                 current_font_size = DEFAULT_FONT_SIZE
-                
-                # We reduce the wrap width to 12-15 characters to force 
-                # the "Stacked" look seen in your example.
                 wrapped_text = "\n".join(wrap(raw_caption.upper(), width=15))
 
                 # DYNAMIC SIZING
@@ -61,7 +70,7 @@ def generate_thumbnail_with_caption():
                         print("❌ Font not found. Check FONT_PATH.")
                         return
 
-                    # Calculate size
+                    # Calculate size using bounding box
                     bbox = draw.multiline_textbbox((0, 0), wrapped_text, font=font, align='center', spacing=20)
                     text_w = bbox[2] - bbox[0]
                     text_h = bbox[3] - bbox[1]
@@ -81,12 +90,12 @@ def generate_thumbnail_with_caption():
                     font=font,
                     fill=CAPTION_COLOR,
                     align='center',
-                    spacing=25 # Increased spacing for better readability
+                    spacing=25 
                 )
 
                 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
                 template_img.save(output_filename)
-                print(f"✅ Created: {output_filename.name} (Font Size: {current_font_size})")
+                print(f"✅ Created: {output_filename.name} (Category: {asset_dir.parent.name}, Font Size: {current_font_size})")
 
         except Exception as e:
             print(f"❌ Error: {e}")
