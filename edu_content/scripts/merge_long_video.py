@@ -1,7 +1,7 @@
 import os
 from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
 
-VIDEO_FOLDER = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\math_content\raw_lessons"
+VIDEO_FOLDER = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\edu_content\raw_lessons"
 TOTAL_VIDEOS = 10
 NUMBER_DURATION = 2
 FONT_SIZE = 200
