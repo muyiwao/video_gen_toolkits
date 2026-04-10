@@ -87,7 +87,7 @@ def process_long_content():
     # --- ASSET PATHS ---
     img_logo_path = asset_dir / "screen-logo.png"
     
-    # 2. SELECTION
+    # 2. SELECTION (Assuming select_video_file and select_audio_file are defined elsewhere)
     video_input = select_video_file(source_dir) 
     rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain") 
     
@@ -102,7 +102,7 @@ def process_long_content():
     target_res = res_map.get(res_choice, "1920:1080")
 
     try:
-        target_minutes = int(input("Enter total length in MINUTES (5min yield 1min): "))
+        target_minutes = int(input("Enter total length in MINUTES (5mins yield 1min): "))
         target_seconds = target_minutes * 60
     except ValueError: return
 
@@ -117,9 +117,8 @@ def process_long_content():
     text_color = "0x5cf629"
 
     try:
-        # --- STAGE 1 & 2: GENERATE THE SILENT VIDEO FIRST ---
+        # --- STAGE 1 & 2: GENERATE THE SILENT VIDEO ---
         print(f"\n[1/4] Preparing Video Loop...")
-        # (This logic ensures temp_no_audio is actually created before the audio mix starts)
         duration, fps = get_video_info(video_input)
         fade_dur = 1.0
         loop_duration = duration - fade_dur
@@ -157,43 +156,52 @@ def process_long_content():
             "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
         ], check=True)
 
-        # --- STAGE 4: AUDIO MIX (Now that temp_no_audio EXISTS) ---
-        print(f"\n[4/4] Blending Audio Tracks...")
+        # --- STAGE 4: AUDIO MIX WITH CONTINUOUS LOOPING ---
+        print(f"\n[4/4] Blending Continuous Audio Tracks...")
         
+        # Start with rain input. -stream_loop -1 ensures it loops infinitely at the source level.
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
+        
+        # filter_audio components:
+        # 'afade' at the start and end of the loop avoids 'clicks' or sudden silences.
+        # volume=1.0 ensures rain stays constant.
         filter_audio = "[1:a]volume=1.0[rain];"
         mix_labels = "[rain]"
         mix_count = 1
 
         if sfx_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-            filter_audio += f"[{mix_count + 1}:a]volume=0.3[sfx];"
+            filter_audio += f"[{mix_count + 1}:a]volume=0.4[sfx];"
             mix_labels += "[sfx]"
             mix_count += 1
 
         if music_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-            filter_audio += f"[{mix_count + 1}:a]volume=0.2[music];"
+            # We add a slight volume limiter and avoid decrescendo by ensuring volume is fixed.
+            filter_audio += f"[{mix_count + 1}:a]volume=0.25[music];"
             mix_labels += "[music]"
             mix_count += 1
 
-        filter_audio += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=2[a_mixed]"
+        # amix configuration:
+        # dropout_transition=0: Crucial. Prevents the volume from dropping when one stream loops.
+        # normalize=0: Prevents FFmpeg from automatically lowering volume (decrescendo) to prevent clipping.
+        filter_audio += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0:normalize=0[a_mixed]"
 
         cmd = [
             "ffmpeg", "-y",
-            "-i", str(temp_no_audio) # Input 0
+            "-i", str(temp_no_audio) # Video Input (0)
         ] + audio_inputs + [
             "-filter_complex", filter_audio,
-            "-map", "0:v",
-            "-map", "[a_mixed]",
-            "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "256k",
-            "-shortest", 
+            "-map", "0:v",           # Take video from silent master
+            "-map", "[a_mixed]",     # Take audio from the mixed loop
+            "-c:v", "copy",          # Don't re-encode video (fast)
+            "-c:a", "aac", "-b:a", "320k",
+            "-shortest",             # Match the length of the video
             str(final_output)
         ]
 
         subprocess.run(cmd, check=True)
-        print(f"\n✅ SUCCESS! Multi-track rain video created: {final_output}")
+        print(f"\n✅ SUCCESS! Continuous-loop rain video created: {final_output}")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
@@ -201,117 +209,6 @@ def process_long_content():
         # Clean up
         for temp in [tile_file, segment_file, list_file, temp_no_audio]:
             if temp.exists(): temp.unlink()
-
-
-"""
-def process_long_content():
-    # 1. Paths Configuration
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
-    asset_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\long")
-    output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_long")
-    audio_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input\audio_pools")
-    
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # --- ASSET PATHS ---
-    img_logo_path = asset_dir / "screen-logo.png"
-    
-    # Selection helpers
-    video_input = select_video_file(source_dir)
-    audio_input = select_audio_file(audio_base_dir)
-    if not video_input or not audio_input: return
-
-    # 2. Resolution & Length Setup
-    res_map = {
-        "480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", 
-        "2k": "2560:1440", "4k": "3840:2160"
-    }
-    
-    print(f"Available Resolutions: {', '.join(res_map.keys())}")
-    res_choice = input("Enter resolution (e.g., 1080p): ").lower().strip()
-    target_res = res_map.get(res_choice, "1920:1080")
-
-    try:
-        # Note: Calculation reference from previous query (3min source = 1min yield)
-        target_minutes = int(input("Enter total length in MINUTES (3min yield 1min): "))
-        target_seconds = target_minutes * 60
-    except ValueError: return
-
-    # File Paths
-    tile_file = output_dir / "temp_master_tile.mp4"
-    segment_file = output_dir / "temp_1min_segment.mp4"
-    temp_no_audio = output_dir / "temp_silent_final.mp4"
-    list_file = output_dir / "concat_list.txt"
-    final_output = output_dir / f"Final_Rain_{res_choice}_{target_minutes}min.mp4"
-
-    # --- TEXT CONFIGURATION ---
-    sub_text = "More rain content is on the way; subscribe so you never miss a moment of calm"
-    text_color = "0x5cf629" # Hex converted for FFmpeg
-    start_time = 5
-
-    try:
-        duration, fps = get_video_info(video_input)
-        fade_dur = 1.0 if duration > 3 else 0.5
-        loop_duration = duration - fade_dur
-
-        # [STAGE 1] Seamless Tile
-        print(f"\n[1/4] Creating Seamless Tile...")
-        filter_tile = (
-            f"[0:v]scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
-            f"[over]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[fadein];"
-            f"[main]trim=start={fade_dur},setpts=PTS-STARTPTS[base];"
-            f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={fade_dur}:alpha=1[alpha_fade];"
-            f"[base][alpha_fade]overlay=x=0:y=0:shortest=1[v]"
-        )
-        subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
-
-        # [STAGE 2] 1-Minute Building Block
-        tiles_needed = math.ceil(60 / loop_duration)
-        with open(list_file, "w") as f:
-            for _ in range(tiles_needed): f.write(f"file '{tile_file.name}'\n")
-        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
-
-        # [STAGE 3] Assembly with Logo and Subscription Text
-        print(f"[3/4] Adding Visual Assets (Logo & Text)...")
-        with open(list_file, "w") as f:
-            for _ in range(target_minutes): f.write(f"file '{segment_file.name}'\n")
-
-        filter_final = (
-            f"[1:v]scale={target_res}[logo_sc];"
-            f"[0:v][logo_sc]overlay=0:0:enable='gt(t,{start_time})'[v_logo];"
-            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=22:fontcolor={text_color}:"
-            f"x=(w-text_w)/2:y=h-th-40:enable='gt(t,{start_time})':"
-            f"shadowcolor=black@0.6:shadowx=2:shadowy=2[vout]"
-        )
-
-        subprocess.run([
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
-            "-i", str(img_logo_path),
-            "-filter_complex", filter_final,
-            "-map", "[vout]", "-t", str(target_seconds),
-            "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
-        ], check=True)
-
-        # [STAGE 4] Audio Mix (Applying "long" Audio Profile)
-        print(f"[4/4] Adding Audio Loop with Filters...")
-        subprocess.run([
-            "ffmpeg", "-y", "-i", str(temp_no_audio), 
-            "-stream_loop", "-1", "-i", str(audio_input),
-            "-map", "0:v", "-map", "1:a", 
-            "-c:v", "copy", 
-            "-af", AUDIO_PROFILES["long"], # <--- Applied Audio Filter Here
-            "-c:a", "aac", "-b:a", "192k", "-shortest", 
-            str(final_output)
-        ], check=True)
-
-        print(f"\n✅ SUCCESS! Output: {final_output}")
-
-    except Exception as e:
-        print(f"\n❌ Error: {e}")
-    finally:
-        for temp in [tile_file, segment_file, list_file, temp_no_audio]:
-            if temp.exists(): temp.unlink()
-"""
 
 def process_shorts_batch():
     """
