@@ -53,6 +53,157 @@ AUDIO_PROFILES = {
 
 # --- PROCESSING MODULES ---
 
+def select_optional_file(directory, label):
+    """Helper to let user pick a file or skip it."""
+    files = list(directory.glob("*.mp3")) + list(directory.glob("*.wav"))
+    if not files:
+        print(f"No files found in {directory}. Skipping {label}.")
+        return None
+    
+    print(f"\n--- {label} Selection ---")
+    print("0: Skip this sound")
+    for i, f in enumerate(files, 1):
+        print(f"{i}: {f.name}")
+    
+    choice = input(f"Select {label} (0-{len(files)}): ").strip()
+    if choice == "0" or not choice:
+        return None
+    try:
+        return files[int(choice) - 1]
+    except (ValueError, IndexError):
+        return None
+
+def process_long_content():
+    # 1. Paths Configuration
+    base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
+    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
+    asset_dir = base_path / "rain_content" / "attachments" / "long"
+    output_dir = base_path / "output" / "output_long"
+    sfx_pool = base_path / "input" / "audio_pools" / "sfx"
+    music_pool = base_path / "input" / "audio_pools" / "music"
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- ASSET PATHS ---
+    img_logo_path = asset_dir / "screen-logo.png"
+    
+    # 2. SELECTION
+    video_input = select_video_file(source_dir) 
+    rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain") 
+    
+    if not video_input or not rain_input: return
+
+    sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
+    music_input = select_optional_file(music_pool, "Tertiary Music")
+
+    # 3. Resolution & Length Setup
+    res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080"}
+    res_choice = input("Enter resolution (e.g., 1080p): ").lower().strip()
+    target_res = res_map.get(res_choice, "1920:1080")
+
+    try:
+        target_minutes = int(input("Enter total length in MINUTES (5min yield 1min): "))
+        target_seconds = target_minutes * 60
+    except ValueError: return
+
+    # File Paths
+    tile_file = output_dir / "temp_master_tile.mp4"
+    segment_file = output_dir / "temp_1min_segment.mp4"
+    temp_no_audio = output_dir / "temp_silent_final.mp4"
+    list_file = output_dir / "concat_list.txt"
+    final_output = output_dir / f"Final_Rain_Mixed_{target_minutes}min.mp4"
+
+    sub_text = "More rain content is on the way; subscribe so you never miss a moment of calm"
+    text_color = "0x5cf629"
+
+    try:
+        # --- STAGE 1 & 2: GENERATE THE SILENT VIDEO FIRST ---
+        print(f"\n[1/4] Preparing Video Loop...")
+        # (This logic ensures temp_no_audio is actually created before the audio mix starts)
+        duration, fps = get_video_info(video_input)
+        fade_dur = 1.0
+        loop_duration = duration - fade_dur
+
+        filter_tile = (
+            f"[0:v]scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
+            f"[over]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[fadein];"
+            f"[main]trim=start={fade_dur},setpts=PTS-STARTPTS[base];"
+            f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={fade_dur}:alpha=1[alpha_fade];"
+            f"[base][alpha_fade]overlay=x=0:y=0:shortest=1[v]"
+        )
+        subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
+
+        tiles_needed = math.ceil(60 / loop_duration)
+        with open(list_file, "w") as f:
+            for _ in range(tiles_needed): f.write(f"file '{tile_file.name}'\n")
+        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
+
+        print(f"[2/4] Assembling {target_minutes} Minute Silent Master...")
+        with open(list_file, "w") as f:
+            for _ in range(target_minutes): f.write(f"file '{segment_file.name}'\n")
+
+        filter_final = (
+            f"[1:v]scale={target_res}[logo_sc];"
+            f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
+            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=22:fontcolor={text_color}:"
+            f"x=(w-text_w)/2:y=h-th-40:enable='gt(t,5)':shadowcolor=black@0.6:shadowx=2:shadowy=2[vout]"
+        )
+
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
+            "-i", str(img_logo_path),
+            "-filter_complex", filter_final,
+            "-map", "[vout]", "-t", str(target_seconds),
+            "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
+        ], check=True)
+
+        # --- STAGE 4: AUDIO MIX (Now that temp_no_audio EXISTS) ---
+        print(f"\n[4/4] Blending Audio Tracks...")
+        
+        audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
+        filter_audio = "[1:a]volume=1.0[rain];"
+        mix_labels = "[rain]"
+        mix_count = 1
+
+        if sfx_input:
+            audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
+            filter_audio += f"[{mix_count + 1}:a]volume=0.3[sfx];"
+            mix_labels += "[sfx]"
+            mix_count += 1
+
+        if music_input:
+            audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
+            filter_audio += f"[{mix_count + 1}:a]volume=0.2[music];"
+            mix_labels += "[music]"
+            mix_count += 1
+
+        filter_audio += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=2[a_mixed]"
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(temp_no_audio) # Input 0
+        ] + audio_inputs + [
+            "-filter_complex", filter_audio,
+            "-map", "0:v",
+            "-map", "[a_mixed]",
+            "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "256k",
+            "-shortest", 
+            str(final_output)
+        ]
+
+        subprocess.run(cmd, check=True)
+        print(f"\n✅ SUCCESS! Multi-track rain video created: {final_output}")
+
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+    finally:
+        # Clean up
+        for temp in [tile_file, segment_file, list_file, temp_no_audio]:
+            if temp.exists(): temp.unlink()
+
+
+"""
 def process_long_content():
     # 1. Paths Configuration
     source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
@@ -160,6 +311,7 @@ def process_long_content():
     finally:
         for temp in [tile_file, segment_file, list_file, temp_no_audio]:
             if temp.exists(): temp.unlink()
+"""
 
 def process_shorts_batch():
     """
