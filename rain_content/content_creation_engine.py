@@ -87,7 +87,7 @@ def process_long_content():
     # --- ASSET PATHS ---
     img_logo_path = asset_dir / "screen-logo.png"
     
-    # 2. SELECTION (Assuming select_video_file and select_audio_file are defined elsewhere)
+    # 2. SELECTION
     video_input = select_video_file(source_dir) 
     rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain") 
     
@@ -102,7 +102,7 @@ def process_long_content():
     target_res = res_map.get(res_choice, "1920:1080")
 
     try:
-        target_minutes = int(input("Enter total length in MINUTES (5mins yield 1min): "))
+        target_minutes = int(input("Enter total length in MINUTES (5min yield 1min): "))
         target_seconds = target_minutes * 60
     except ValueError: return
 
@@ -114,7 +114,7 @@ def process_long_content():
     final_output = output_dir / f"Final_Rain_Mixed_{target_minutes}min.mp4"
 
     sub_text = "More rain content is on the way; subscribe so you never miss a moment of calm"
-    text_color = "0x5cf629"
+    text_color = "0x5cf629" # Neon Green
 
     try:
         # --- STAGE 1 & 2: GENERATE THE SILENT VIDEO ---
@@ -141,11 +141,17 @@ def process_long_content():
         with open(list_file, "w") as f:
             for _ in range(target_minutes): f.write(f"file '{segment_file.name}'\n")
 
+        # REFACTORED FILTER: Added 'box', 'boxcolor', and 'boxborderw' for the caption background
+        # box=1: enables the background box
+        # boxcolor=black@0.4: Slightly black (40% opacity)
+        # boxborderw=10: Adds padding around the text to simulate a thicker, softer edge
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
-            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=22:fontcolor={text_color}:"
-            f"x=(w-text_w)/2:y=h-th-40:enable='gt(t,5)':shadowcolor=black@0.6:shadowx=2:shadowy=2[vout]"
+            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=20:fontcolor={text_color}:"
+            f"x=(w-text_w)/2:y=h-th-60:enable='gt(t,5)':"
+            f"box=1:boxcolor=black@0.4:boxborderw=12:"
+            f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
         )
 
         subprocess.run([
@@ -156,15 +162,9 @@ def process_long_content():
             "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
         ], check=True)
 
-        # --- STAGE 4: AUDIO MIX WITH CONTINUOUS LOOPING ---
+        # --- STAGE 4: AUDIO MIX ---
         print(f"\n[4/4] Blending Continuous Audio Tracks...")
-        
-        # Start with rain input. -stream_loop -1 ensures it loops infinitely at the source level.
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
-        
-        # filter_audio components:
-        # 'afade' at the start and end of the loop avoids 'clicks' or sudden silences.
-        # volume=1.0 ensures rain stays constant.
         filter_audio = "[1:a]volume=1.0[rain];"
         mix_labels = "[rain]"
         mix_count = 1
@@ -177,36 +177,31 @@ def process_long_content():
 
         if music_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-            # We add a slight volume limiter and avoid decrescendo by ensuring volume is fixed.
             filter_audio += f"[{mix_count + 1}:a]volume=0.25[music];"
             mix_labels += "[music]"
             mix_count += 1
 
-        # amix configuration:
-        # dropout_transition=0: Crucial. Prevents the volume from dropping when one stream loops.
-        # normalize=0: Prevents FFmpeg from automatically lowering volume (decrescendo) to prevent clipping.
         filter_audio += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0:normalize=0[a_mixed]"
 
         cmd = [
             "ffmpeg", "-y",
-            "-i", str(temp_no_audio) # Video Input (0)
+            "-i", str(temp_no_audio)
         ] + audio_inputs + [
             "-filter_complex", filter_audio,
-            "-map", "0:v",           # Take video from silent master
-            "-map", "[a_mixed]",     # Take audio from the mixed loop
-            "-c:v", "copy",          # Don't re-encode video (fast)
+            "-map", "0:v",
+            "-map", "[a_mixed]",
+            "-c:v", "copy",
             "-c:a", "aac", "-b:a", "320k",
-            "-shortest",             # Match the length of the video
+            "-shortest", 
             str(final_output)
         ]
 
         subprocess.run(cmd, check=True)
-        print(f"\n✅ SUCCESS! Continuous-loop rain video created: {final_output}")
+        print(f"\n✅ SUCCESS! Multi-track rain video created: {final_output}")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
     finally:
-        # Clean up
         for temp in [tile_file, segment_file, list_file, temp_no_audio]:
             if temp.exists(): temp.unlink()
 
