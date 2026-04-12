@@ -96,13 +96,33 @@ def process_long_content():
     sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
     music_input = select_optional_file(music_pool, "Tertiary Music")
 
+    # --- VOLUME ALLOCATION SECTION ---
+    print("\n--- Volume Allocation (Press Enter to use defaults) ---")
+    try:
+        rain_vol_pct = input("Rain Volume % [Default 75]: ").strip()
+        rain_vol = float(rain_vol_pct) / 100 if rain_vol_pct else 0.75
+
+        sfx_vol = 0.15 # Default
+        if sfx_input:
+            sfx_vol_pct = input("SFX Volume % [Default 15]: ").strip()
+            sfx_vol = float(sfx_vol_pct) / 100 if sfx_vol_pct else 0.15
+
+        music_vol = 0.10 # Default
+        if music_input:
+            music_vol_pct = input("Music Volume % [Default 10]: ").strip()
+            music_vol = float(music_vol_pct) / 100 if music_vol_pct else 0.10
+            
+    except ValueError:
+        print("⚠️ Invalid input detected. Reverting to defaults (75/15/10).")
+        rain_vol, sfx_vol, music_vol = 0.75, 0.15, 0.10
+
     # 3. Resolution & Length Setup
     res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080"}
-    res_choice = input("Enter resolution (e.g., 1080p): ").lower().strip()
+    res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
     try:
-        target_minutes = int(input("Enter total length in MINUTES (5min yield 1min): "))
+        target_minutes = int(input("Enter total length in MINUTES (4mins yield 1min): "))
         target_seconds = target_minutes * 60
     except ValueError: return
 
@@ -114,7 +134,7 @@ def process_long_content():
     final_output = output_dir / f"Final_Rain_Mixed_{target_minutes}min.mp4"
 
     sub_text = "More rain content is on the way; subscribe so you never miss a moment of calm"
-    text_color = "0x5cf629" # Neon Green
+    text_color = "0x5cf629" 
 
     try:
         # --- STAGE 1 & 2: GENERATE THE SILENT VIDEO ---
@@ -141,14 +161,10 @@ def process_long_content():
         with open(list_file, "w") as f:
             for _ in range(target_minutes): f.write(f"file '{segment_file.name}'\n")
 
-        # REFACTORED FILTER: Added 'box', 'boxcolor', and 'boxborderw' for the caption background
-        # box=1: enables the background box
-        # boxcolor=black@0.4: Slightly black (40% opacity)
-        # boxborderw=10: Adds padding around the text to simulate a thicker, softer edge
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
-            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=20:fontcolor={text_color}:"
+            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=21:fontcolor={text_color}:"
             f"x=(w-text_w)/2:y=h-th-60:enable='gt(t,5)':"
             f"box=1:boxcolor=black@0.4:boxborderw=12:"
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
@@ -162,22 +178,23 @@ def process_long_content():
             "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
         ], check=True)
 
-        # --- STAGE 4: AUDIO MIX ---
-        print(f"\n[4/4] Blending Continuous Audio Tracks...")
+        # --- STAGE 4: AUDIO MIX WITH DYNAMIC VOLUME ---
+        print(f"\n[4/4] Blending Audio Tracks (Rain: {rain_vol}, SFX: {sfx_vol}, Music: {music_vol})...")
+        
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
-        filter_audio = "[1:a]volume=1.0[rain];"
+        filter_audio = f"[1:a]volume={rain_vol}[rain];"
         mix_labels = "[rain]"
         mix_count = 1
 
         if sfx_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-            filter_audio += f"[{mix_count + 1}:a]volume=0.4[sfx];"
+            filter_audio += f"[{mix_count + 1}:a]volume={sfx_vol}[sfx];"
             mix_labels += "[sfx]"
             mix_count += 1
 
         if music_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-            filter_audio += f"[{mix_count + 1}:a]volume=0.25[music];"
+            filter_audio += f"[{mix_count + 1}:a]volume={music_vol}[music];"
             mix_labels += "[music]"
             mix_count += 1
 
@@ -197,7 +214,7 @@ def process_long_content():
         ]
 
         subprocess.run(cmd, check=True)
-        print(f"\n✅ SUCCESS! Multi-track rain video created: {final_output}")
+        print(f"\n✅ SUCCESS! Multi-track rain video created at {int(rain_vol*100)}% volume.")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
