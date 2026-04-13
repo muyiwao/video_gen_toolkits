@@ -3,6 +3,13 @@ import json
 import math
 import os
 from pathlib import Path
+import sys
+
+# Adds the project root to the python path
+root_path = Path(__file__).resolve().parent.parent
+sys.path.append(str(root_path))
+
+from rain_content.scripts import thumbnail_extractor
 
 # --- CORE UTILITY FUNCTIONS ---
 
@@ -130,7 +137,7 @@ def process_long_content():
     target_res = res_map.get(res_choice, "1920:1080")
 
     try:
-        target_minutes = int(input("Enter total length in MINUTES (4min yield 1min): "))
+        target_minutes = int(input("Enter total length in MINUTES (5min yield 1min): "))
         target_seconds = target_minutes * 60
     except ValueError: return
 
@@ -433,6 +440,8 @@ if __name__ == "__main__":
     print("--- CONTENT GENERATION TOOLKIT (FFMPEG NATIVE AUDIO) ---")
     print("1. Long | 2. Shorts Batch | 3. Live")
     choice = input("\nChoice: ").strip()
-    if choice == '1': process_long_content()
+    if choice == '1':
+        process_long_content()
+        thumbnail_extractor.generate_universal_thumbs()
     elif choice == '2': process_shorts_batch()
     elif choice == '3': process_live_content()
