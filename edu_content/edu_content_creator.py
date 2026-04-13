@@ -5,6 +5,7 @@ import re
 import shutil
 from pathlib import Path
 import sys
+from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
 
 # Adds the project root to the python path
 root_path = Path(__file__).resolve().parent.parent
@@ -92,6 +93,69 @@ def run_long_editor(category, speed):
     print(f"🚀 Rendering Long Video ({category})...")
     subprocess.run(cmd, check=True)
     print(f"✨ SUCCESS: {output_file}")
+
+def merge_sequential_lessons(input_dir, output_filename="merged_output.mp4", target_res=(1280, 720)):
+    """
+    Scans a directory for numbered .mp4 files (1.mp4, 2.mp4, etc.),
+    inserts a countdown/number slide before each, and merges them.
+    """
+    input_path = Path(input_dir)
+    output_path = input_path / output_filename
+    
+    # Configuration
+    NUMBER_DURATION = 2
+    FONT_SIZE = 200
+
+    # 1. Dynamically find all files that are named with numbers (e.g., '1.mp4', '12.mp4')
+    # This prevents errors if you have 5 files or 50 files.
+    video_files = [f for f in input_path.glob("*.mp4") if f.stem.isdigit()]
+    
+    # Sort them numerically (so '10' comes after '2')
+    video_files.sort(key=lambda x: int(x.stem))
+
+    if not video_files:
+        print(f"⚠️ No numbered MP4 files found in {input_dir}")
+        return None
+
+    print(f"🔗 Found {len(video_files)} videos. Starting merge...")
+
+    clips = []
+
+    for file_path in video_files:
+        # Load and resize the source video
+        video_clip = VideoFileClip(str(file_path)).resized(target_res)
+
+        # Create the text clip (using the file's own number)
+        number_text = TextClip(
+            text=file_path.stem,
+            font_size=FONT_SIZE,
+            color="white",
+            size=target_res
+        ).with_duration(NUMBER_DURATION)
+
+        # Center the text in a composite clip
+        number_clip = CompositeVideoClip(
+            [number_text.with_position("center")],
+            size=target_res
+        ).with_duration(NUMBER_DURATION)
+
+        clips.append(number_clip)
+        clips.append(video_clip)
+
+    # 2. Concatenate all clips
+    final_video = concatenate_videoclips(clips, method="compose")
+
+    # 3. Write the final file
+    final_video.write_videofile(
+        str(output_path),
+        codec="libx264",
+        audio_codec="aac",
+        fps=30,
+        logger="bar"  # <--- Change 'None' to 'bar' to see the progress
+    )
+
+    print(f"✨ Success! Merged video saved to: {output_path}")
+    return output_path
 
 def run_shorts_batch(category, speed, caption, scale):
     """Processes batch shorts and exports matching JSON metadata for thumbnails."""
@@ -200,6 +264,7 @@ if __name__ == "__main__":
         scl = float(input("📏 Text Scale (default 100): ") or 100)
         run_shorts_batch(cat, spd, cap, scl)
     else:
+        merge_sequential_lessons(MAIN_V_DIR, output_filename="merged_output.mp4")
         run_long_editor(cat, spd)
         generate_thumbnail.generate_thumbnail_with_caption()
 
