@@ -5,7 +5,7 @@ from pathlib import Path
 def organize_and_rename_videos():
     # 1. Define Paths
     source_dir = Path(r"C:\Users\Muy\Downloads")
-    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\math_content\raw_lessons")
+    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\edu_content\raw_lessons")
 
     # Ensure destination exists
     dest_dir.mkdir(parents=True, exist_ok=True)
