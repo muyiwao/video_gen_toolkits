@@ -90,8 +90,6 @@ def process_long_content():
     music_pool = base_path / "input" / "audio_pools" / "music"
     
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # --- ASSET PATHS ---
     img_logo_path = asset_dir / "screen-logo.png"
     
     # 2. SELECTION
@@ -105,7 +103,6 @@ def process_long_content():
 
     # --- RAIN INTENSITY / SPEED SECTION ---
     print("\n--- Rain Speed Adjustment ---")
-    print("1.0 = Normal | 0.5 = 2x Faster (Heavy) | 1.5 = Slower (Light)")
     try:
         speed_input = input("Enter Speed Factor [Default 1.0]: ").strip()
         speed_factor = float(speed_input) if speed_input else 1.0
@@ -115,31 +112,49 @@ def process_long_content():
     # --- VOLUME ALLOCATION SECTION ---
     print("\n--- Volume Allocation ---")
     try:
-        rain_vol_pct = input("Rain Volume % [Default 75]: ").strip()
-        rain_vol = float(rain_vol_pct) / 100 if rain_vol_pct else 0.75
-
-        sfx_vol = 0.15
-        if sfx_input:
-            sfx_vol_pct = input("SFX Volume % [Default 15]: ").strip()
-            sfx_vol = float(sfx_vol_pct) / 100 if sfx_vol_pct else 0.15
-
-        music_vol = 0.10
-        if music_input:
-            music_vol_pct = input("Music Volume % [Default 10]: ").strip()
-            music_vol = float(music_vol_pct) / 100 if music_vol_pct else 0.10
-            
+        rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
+        sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
+        music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
     except ValueError:
         rain_vol, sfx_vol, music_vol = 0.75, 0.15, 0.10
 
-    # 3. Resolution & Length Setup
+    # 3. Resolution
     res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080"}
     res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
-    try:
-        target_minutes = int(input("Enter total length in MINUTES (5min yield 1min): "))
-        target_seconds = target_minutes * 60
-    except ValueError: return
+    # --- DURATION PREDICTION & APPROVAL LOOP ---
+    duration, _ = get_video_info(video_input)
+    adj_duration = duration * speed_factor
+    fade_dur = 1.0
+    loop_duration = adj_duration - fade_dur # The actual 'usable' time per loop
+
+    while True:
+        try:
+            print(f"\n--- Duration Prediction ---")
+            print(f"One loop yields approx. {loop_duration / 60:.2f} minutes of seamless footage.")
+            target_minutes = float(input("Enter DESIRED final length in MINUTES: "))
+            
+            # Prediction Logic
+            # We calculate how many segments it takes to reach that time
+            total_required_seconds = target_minutes * 60
+            num_loops_needed = math.ceil(total_required_seconds / loop_duration)
+            predicted_raw_input_needed = (num_loops_needed * duration) / 60
+            
+            print(f"\n📝 PREDICTION REPORT:")
+            print(f"Target Output: {target_minutes:.2f} minutes")
+            print(f"Loops Required: {num_loops_needed}")
+            print(f"Estimated Input Needed: {predicted_raw_input_needed:.2f} minutes of recorded footage")
+            print(f"Final File Size Estimate: ~{(target_minutes * 15):.0f} MB (at 1080p)")
+            
+            confirm = input("\nAccept these parameters and start processing? (y/n): ").lower().strip()
+            if confirm == 'y':
+                target_seconds = target_minutes * 60
+                break
+            else:
+                print("Adjustment requested. Please enter a new duration.")
+        except ValueError:
+            print("❌ Invalid number. Please enter a decimal or integer for minutes.")
 
     # File Paths
     tile_file = output_dir / "temp_master_tile.mp4"
@@ -152,16 +167,8 @@ def process_long_content():
     text_color = "0x5cf629" 
 
     try:
-        # --- STAGE 1 & 2: GENERATE THE SILENT VIDEO WITH SPEED ADJ ---
-        print(f"\n[1/4] Preparing Video Loop (Speed: {speed_factor}x)...")
-        duration, fps = get_video_info(video_input)
-        
-        # Calculate new duration based on speed
-        adj_duration = duration * speed_factor
-        fade_dur = 1.0
-        loop_duration = adj_duration - fade_dur
-
-        # Added 'setpts' to control speed
+        # --- STAGE 1: PREPARE BASE LOOP ---
+        print(f"\n[1/4] Preparing Video Loop...")
         filter_tile = (
             f"[0:v]setpts={speed_factor}*PTS,"
             f"scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
@@ -172,20 +179,24 @@ def process_long_content():
         )
         subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
 
-        tiles_needed = math.ceil(60 / loop_duration)
+        # Build 1-minute segment as a standard block
+        tiles_in_one_min = math.ceil(60 / loop_duration)
         with open(list_file, "w") as f:
-            for _ in range(tiles_needed): f.write(f"file '{tile_file.name}'\n")
+            for _ in range(tiles_in_one_min): f.write(f"file '{tile_file.name}'\n")
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
+        # --- STAGE 2: ASSEMBLE MASTER ---
         print(f"[2/4] Assembling {target_minutes} Minute Silent Master...")
+        minutes_to_concat = math.ceil(target_minutes)
         with open(list_file, "w") as f:
-            for _ in range(target_minutes): f.write(f"file '{segment_file.name}'\n")
+            for _ in range(minutes_to_concat): f.write(f"file '{segment_file.name}'\n")
 
+        scroll_speed = 60
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
-            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=21:fontcolor={text_color}:"
-            f"x=(w-text_w)/2:y=h-th-60:enable='gt(t,5)':"
+            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=22:fontcolor={text_color}:"
+            f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-th-60:enable='gt(t,5)':"
             f"box=1:boxcolor=black@0.4:boxborderw=12:"
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
         )
@@ -200,7 +211,6 @@ def process_long_content():
 
         # --- STAGE 4: AUDIO MIX ---
         print(f"\n[4/4] Blending Audio Tracks...")
-        
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
         filter_audio = f"[1:a]volume={rain_vol}[rain];"
         mix_labels = "[rain]"
@@ -221,20 +231,16 @@ def process_long_content():
         filter_audio += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0:normalize=0[a_mixed]"
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(temp_no_audio)
+            "ffmpeg", "-y", "-i", str(temp_no_audio)
         ] + audio_inputs + [
             "-filter_complex", filter_audio,
-            "-map", "0:v",
-            "-map", "[a_mixed]",
-            "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "320k",
-            "-shortest", 
-            str(final_output)
+            "-map", "0:v", "-map", "[a_mixed]",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "320k",
+            "-shortest", str(final_output)
         ]
 
         subprocess.run(cmd, check=True)
-        print(f"\n✅ SUCCESS! Multi-track rain video created.")
+        print(f"\n✅ SUCCESS! {target_minutes}min video created.")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
@@ -442,6 +448,15 @@ if __name__ == "__main__":
     choice = input("\nChoice: ").strip()
     if choice == '1':
         process_long_content()
-        thumbnail_extractor.generate_universal_thumbs()
-    elif choice == '2': process_shorts_batch()
-    elif choice == '3': process_live_content()
+        
+        # --- NEW THUMBNAIL PROMPT ---
+        make_thumb = input("\n🖼️  Generate thumbnail for this long video? (y/n): ").strip().lower()
+        if make_thumb == 'y':
+            thumbnail_extractor.generate_universal_thumbs()
+        else:
+            print("⏭️  Skipping thumbnail generation.")
+            
+    elif choice == '2': 
+        process_shorts_batch()
+    elif choice == '3': 
+        process_live_content()
