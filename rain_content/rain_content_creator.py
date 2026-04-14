@@ -133,7 +133,7 @@ def process_long_content():
         try:
             print(f"\n--- Duration Prediction ---")
             print(f"One loop yields approx. {loop_duration / 60:.2f} minutes of seamless footage.")
-            target_minutes = float(input("Enter DESIRED final length in MINUTES: "))
+            target_minutes = float(input("Enter DESIRED final length in MINUTES (1.5min yield 1min): "))
             
             # Prediction Logic
             # We calculate how many segments it takes to reach that time
