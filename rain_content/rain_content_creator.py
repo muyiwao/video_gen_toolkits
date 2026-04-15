@@ -4,6 +4,7 @@ import math
 import os
 from pathlib import Path
 import sys
+import re
 
 # Adds the project root to the python path
 root_path = Path(__file__).resolve().parent.parent
@@ -248,10 +249,14 @@ def process_long_content():
         for temp in [tile_file, segment_file, list_file, temp_no_audio]:
             if temp.exists(): temp.unlink()
 
+def sanitize_filename(name):
+    """Removes illegal characters and replaces spaces with underscores."""
+    return re.sub(r'[\\/*?:"<>|]', '', name).replace(' ', '_')
+
 def process_shorts_batch():
     """
-    Produces R, C, and L shorts with a composite audio mix.
-    Allows for dynamic duration input in seconds or minutes during runtime.
+    Produces R, C, and L shorts with composite audio and 
+    Matching-Pair JSON metadata files.
     """
     # --- 1. Path Configurations ---
     base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
@@ -259,85 +264,72 @@ def process_shorts_batch():
     audio_base_dir = base_path / "input" / "audio_pools"
     asset_dir = base_path / "rain_content" / "attachments" / "shorts"
     output_dir = base_path / "output" / "output_shorts"
-    
-    sfx_pool = audio_base_dir / "sfx"
-    music_pool = audio_base_dir / "music"
+    json_metadata_path = base_path / "input" / "metadata.json"
     
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Attachment Paths
-    logo_cta = asset_dir / "logo-cta.png"
-    sub_cta = asset_dir / "subscribe-cta.png"
+    # --- 2. Load Master Metadata ---
+    if not json_metadata_path.exists():
+        print(f"❌ Error: Master metadata not found at {json_metadata_path}")
+        return
     
-    # --- 2. Runtime Selections ---
+    with open(json_metadata_path, 'r', encoding='utf-8') as f:
+        master_metadata = json.load(f)
+    
+    # --- 3. Runtime Selections ---
     video_input = select_video_file(source_dir)
     rain_input = select_audio_file(audio_base_dir / "rain") 
     
-    if not video_input or not rain_input: 
-        print("Essential video or rain audio missing.")
-        return
+    if not video_input or not rain_input: return
 
-    sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
-    music_input = select_optional_file(music_pool, "Tertiary Music")
+    sfx_input = select_optional_file(audio_base_dir / "sfx", "Secondary SFX")
+    music_input = select_optional_file(audio_base_dir / "music", "Tertiary Music")
 
-    # --- 3. DURATION SELECTION (NEW) ---
-    print("\n--- Duration Settings ---")
-    print("Enter seconds (e.g., 59) or minutes with 'm' (e.g., 0.5m)")
-    dur_raw = input("Target Duration [Default 59s]: ").strip().lower()
-    
-    try:
-        if dur_raw.endswith('m'):
-            target_seconds = float(dur_raw.replace('m', '')) * 60
-        elif dur_raw:
-            target_seconds = float(dur_raw)
-        else:
-            target_seconds = 59.0
-            
-        if target_seconds > 60:
-            print(f"⚠️ Warning: {target_seconds}s exceeds the standard 60s limit for YouTube Shorts.")
-    except ValueError:
-        print("Invalid input. Defaulting to 59 seconds.")
-        target_seconds = 59.0
+    # --- 4. Duration & Resolution ---
+    dur_raw = input("\nTarget Duration (e.g., 59 or 0.5m) [Default 59s]: ").strip().lower()
+    target_seconds = float(dur_raw.replace('m', '')) * 60 if 'm' in dur_raw else float(dur_raw or 59)
 
-    # --- 4. Format & Resolution ---
     res_map = {"720p": "720:1280", "1080p": "1080:1920", "2k": "1440:2560", "4k": "2160:3840"}
-    res_choice = input("\nEnter resolution (default 1080p): ").lower().strip()
+    res_choice = input("Enter resolution (default 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1080:1920")
     t_w, t_h = map(int, target_res.split(':'))
 
     # --- 5. Volume Allocation ---
-    print("\n--- Volume Allocation ---")
     try:
-        rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
+        rain_vol = float(input("\nRain Volume % [Default 75]: ") or 75) / 100
         sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
         music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
     except ValueError:
         rain_vol, sfx_vol, music_vol = 0.75, 0.15, 0.10
 
-    # --- 6. Configuration Mapping ---
     configs = {
-        "R": {"profile": "short_r", "offset": "in_w-out_w"},
-        "C": {"profile": "short_c", "offset": "(in_w-out_w)/2"},
-        "L": {"profile": "short_l", "offset": "0"}
+        "Right": {"profile": "short_r", "offset": "in_w-out_w"},
+        "Center": {"profile": "short_c", "offset": "(in_w-out_w)/2"},
+        "Left": {"profile": "short_l", "offset": "0"}
     }
 
-    # --- 7. Batch Processing Loop ---
+    # --- 6. Batch Processing Loop ---
+    short_index = 0
     for label, cfg in configs.items():
-        print(f"\n--- Processing Variant: {label} ---")
-        custom_name = input(f"📁 Enter filename for {label} version: ").strip()
-        if not custom_name.lower().endswith(".mp4"):
-            custom_name += ".mp4"
-            
-        caption = input(f"💬 Enter caption for {label} version: ").strip()
-        final_output = output_dir / custom_name
-        
-        font_path = "C\\:/Windows/Fonts/arialbd.ttf"
+        if short_index >= len(master_metadata):
+            print(f"⚠️ Warning: No more metadata available for {label} variant.")
+            break
 
-        # Stage 1: Visual Filter Chain
-        # Note: 'between' for Subscribe CTA is now dynamic based on duration
-        sub_start = max(0, target_seconds - 10)
-        sub_end = target_seconds
+        current_seo = master_metadata[short_index]
+        raw_title = current_seo.get("title", "Untitled_Short")
         
+        # APPLY MATCHING-PAIR NAMING CONVENTION
+        base_name = f"{sanitize_filename(raw_title)}_{label}"
+        video_output = output_dir / f"{base_name}.mp4"
+        json_output = output_dir / f"{base_name}.json"
+
+        print(f"\n🎬 Rendering Pair: {base_name}")
+        
+        # Visual & Audio Filter Strings
+        sub_start, sub_end = max(0, target_seconds - 10), target_seconds
+        font_path = "C\\:/Windows/Fonts/arialbd.ttf"
+        caption = raw_title.replace("'", "\\'").replace(":", "\\:")
+
         filter_v = (
             f"[0:v]scale=-1:{t_h},crop={t_w}:{t_h}:{cfg['offset']}:0,setsar=1,"
             f"drawtext=fontfile='{font_path}':text='{caption}':fontcolor=white:fontsize=90:"
@@ -348,7 +340,6 @@ def process_shorts_batch():
             f"[v_logo][sub_scaled]overlay=0:0:enable='between(t,{sub_start},{sub_end})'[v]"
         )
 
-        # Stage 2: Audio Composite
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
         filter_a = f"[3:a]volume={rain_vol}[rain];"
         mix_labels = "[rain]"
@@ -366,33 +357,34 @@ def process_shorts_batch():
             mix_labels += "[music]"
             mix_count += 1
 
-        filter_a += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0[a_mixed];"
+        filter_a += f"{mix_labels}amix=inputs={mix_count}:duration=first[a_mixed];"
         filter_a += f"[a_mixed]{AUDIO_PROFILES[cfg['profile']]}[final_a]"
 
         try:
-            print(f"🎬 Rendering {custom_name} ({target_seconds}s)...")
-            cmd = [
-                "ffmpeg", "-y", 
-                "-stream_loop", "-1", "-i", str(video_input),
-                "-i", str(logo_cta),
-                "-i", str(sub_cta)
+            subprocess.run([
+                "ffmpeg", "-y", "-stream_loop", "-1", "-i", str(video_input),
+                "-i", str(base_path / "rain_content/attachments/shorts/logo-cta.png"),
+                "-i", str(base_path / "rain_content/attachments/shorts/subscribe-cta.png")
             ] + audio_inputs + [
-                "-filter_complex", f"{filter_v};{filter_a}", 
-                "-map", "[v]", 
-                "-map", "[final_a]", 
-                "-t", str(target_seconds), 
+                "-filter_complex", f"{filter_v};{filter_a}",
+                "-map", "[v]", "-map", "[final_a]",
+                "-t", str(target_seconds),
                 "-c:v", "libx264", "-crf", "20", "-preset", "veryfast",
-                "-c:a", "aac", "-b:a", "192k", 
-                str(final_output)
-            ]
-            subprocess.run(cmd, check=True)
-            print(f"✅ Success: {final_output.name}")
+                "-c:a", "aac", "-b:a", "192k", str(video_output)
+            ], check=True)
+
+            # SAVE MATCHING JSON FILE
+            with open(json_output, 'w', encoding='utf-8') as jf:
+                json.dump(current_seo, jf, indent=2)
+            
+            print(f"✅ Created: {video_output.name} + {json_output.name}")
+            short_index += 1
 
         except subprocess.CalledProcessError:
-            print(f"❌ FFmpeg failed on variant {label}.")
+            print(f"❌ FFmpeg failed on {label} variant.")
             continue
 
-    print(f"\n✨ Batch complete. Files saved to: {output_dir}")
+    print(f"\n✨ Batch complete. All pairs saved to: {output_dir}")
 
 def process_live_content():
     """
