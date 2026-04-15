@@ -250,15 +250,19 @@ def process_long_content():
 
 def process_shorts_batch():
     """
-    Produces R, C, and L shorts. 
-    Refactor: Dynamically scales attachments to match video resolution 
-    while preserving original aspect ratio layout.
+    Produces R, C, and L shorts with a composite audio mix.
+    Allows for dynamic duration input in seconds or minutes during runtime.
     """
     # --- 1. Path Configurations ---
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
-    audio_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input\audio_pools")
-    asset_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\shorts")
-    output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_shorts")
+    base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
+    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
+    audio_base_dir = base_path / "input" / "audio_pools"
+    asset_dir = base_path / "rain_content" / "attachments" / "shorts"
+    output_dir = base_path / "output" / "output_shorts"
+    
+    sfx_pool = audio_base_dir / "sfx"
+    music_pool = audio_base_dir / "music"
+    
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Attachment Paths
@@ -267,25 +271,57 @@ def process_shorts_batch():
     
     # --- 2. Runtime Selections ---
     video_input = select_video_file(source_dir)
-    audio_input = select_audio_file(audio_base_dir)
-    if not video_input or not audio_input: 
-        print("Selection cancelled or files not found.")
+    rain_input = select_audio_file(audio_base_dir / "rain") 
+    
+    if not video_input or not rain_input: 
+        print("Essential video or rain audio missing.")
         return
 
-    # --- 3. Format & Resolution ---
+    sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
+    music_input = select_optional_file(music_pool, "Tertiary Music")
+
+    # --- 3. DURATION SELECTION (NEW) ---
+    print("\n--- Duration Settings ---")
+    print("Enter seconds (e.g., 59) or minutes with 'm' (e.g., 0.5m)")
+    dur_raw = input("Target Duration [Default 59s]: ").strip().lower()
+    
+    try:
+        if dur_raw.endswith('m'):
+            target_seconds = float(dur_raw.replace('m', '')) * 60
+        elif dur_raw:
+            target_seconds = float(dur_raw)
+        else:
+            target_seconds = 59.0
+            
+        if target_seconds > 60:
+            print(f"⚠️ Warning: {target_seconds}s exceeds the standard 60s limit for YouTube Shorts.")
+    except ValueError:
+        print("Invalid input. Defaulting to 59 seconds.")
+        target_seconds = 59.0
+
+    # --- 4. Format & Resolution ---
     res_map = {"720p": "720:1280", "1080p": "1080:1920", "2k": "1440:2560", "4k": "2160:3840"}
     res_choice = input("\nEnter resolution (default 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1080:1920")
     t_w, t_h = map(int, target_res.split(':'))
 
-    # --- 4. Configuration Mapping ---
+    # --- 5. Volume Allocation ---
+    print("\n--- Volume Allocation ---")
+    try:
+        rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
+        sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
+        music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
+    except ValueError:
+        rain_vol, sfx_vol, music_vol = 0.75, 0.15, 0.10
+
+    # --- 6. Configuration Mapping ---
     configs = {
         "R": {"profile": "short_r", "offset": "in_w-out_w"},
         "C": {"profile": "short_c", "offset": "(in_w-out_w)/2"},
         "L": {"profile": "short_l", "offset": "0"}
     }
 
-    # --- 5. Batch Processing Loop ---
+    # --- 7. Batch Processing Loop ---
     for label, cfg in configs.items():
         print(f"\n--- Processing Variant: {label} ---")
         custom_name = input(f"📁 Enter filename for {label} version: ").strip()
@@ -298,44 +334,62 @@ def process_shorts_batch():
         font_path = "C\\:/Windows/Fonts/arialbd.ttf"
 
         # Stage 1: Visual Filter Chain
-        # Fix: We scale the inputs [1:v] and [2:v] to match target_res 
-        # so they occupy the same relative space regardless of 720p/1080p/4k.
+        # Note: 'between' for Subscribe CTA is now dynamic based on duration
+        sub_start = max(0, target_seconds - 10)
+        sub_end = target_seconds
+        
         filter_v = (
-            # 1. Prepare Main Video
             f"[0:v]scale=-1:{t_h},crop={t_w}:{t_h}:{cfg['offset']}:0,setsar=1,"
             f"drawtext=fontfile='{font_path}':text='{caption}':fontcolor=white:fontsize=90:"
             f"x=(w-text_w)/2:y=h*0.1:borderw=4:bordercolor=black[v_text];"
-            
-            # 2. Scale Logo to fit video resolution and overlay
             f"[1:v]scale={t_w}:{t_h}[logo_scaled];"
             f"[v_text][logo_scaled]overlay=0:0[v_logo];"
-            
-            # 3. Scale Subscribe CTA to fit video resolution and overlay (timed)
             f"[2:v]scale={t_w}:{t_h}[sub_scaled];"
-            f"[v_logo][sub_scaled]overlay=0:0:enable='between(t,15,20)'[v]"
+            f"[v_logo][sub_scaled]overlay=0:0:enable='between(t,{sub_start},{sub_end})'[v]"
         )
 
+        # Stage 2: Audio Composite
+        audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
+        filter_a = f"[3:a]volume={rain_vol}[rain];"
+        mix_labels = "[rain]"
+        mix_count = 1
+
+        if sfx_input:
+            audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
+            filter_a += f"[{3 + mix_count}:a]volume={sfx_vol}[sfx];"
+            mix_labels += "[sfx]"
+            mix_count += 1
+        
+        if music_input:
+            audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
+            filter_a += f"[{3 + mix_count}:a]volume={music_vol}[music];"
+            mix_labels += "[music]"
+            mix_count += 1
+
+        filter_a += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0[a_mixed];"
+        filter_a += f"[a_mixed]{AUDIO_PROFILES[cfg['profile']]}[final_a]"
+
         try:
-            print(f"🎬 Rendering {custom_name} with original-scale attachments...")
-            subprocess.run([
+            print(f"🎬 Rendering {custom_name} ({target_seconds}s)...")
+            cmd = [
                 "ffmpeg", "-y", 
-                "-stream_loop", "-1", "-i", str(video_input), # Input 0
-                "-i", str(logo_cta),                           # Input 1
-                "-i", str(sub_cta),                            # Input 2
-                "-stream_loop", "-1", "-i", str(audio_input), # Input 3
-                "-filter_complex", filter_v, 
-                "-af", AUDIO_PROFILES[cfg['profile']],
+                "-stream_loop", "-1", "-i", str(video_input),
+                "-i", str(logo_cta),
+                "-i", str(sub_cta)
+            ] + audio_inputs + [
+                "-filter_complex", f"{filter_v};{filter_a}", 
                 "-map", "[v]", 
-                "-map", "3:a", 
-                "-t", "20", 
+                "-map", "[final_a]", 
+                "-t", str(target_seconds), 
                 "-c:v", "libx264", "-crf", "20", "-preset", "veryfast",
                 "-c:a", "aac", "-b:a", "192k", 
                 str(final_output)
-            ], check=True)
+            ]
+            subprocess.run(cmd, check=True)
             print(f"✅ Success: {final_output.name}")
 
-        except subprocess.CalledProcessError as e:
-            print(f"❌ FFmpeg failed on variant {label}. Check paths or assets.")
+        except subprocess.CalledProcessError:
+            print(f"❌ FFmpeg failed on variant {label}.")
             continue
 
     print(f"\n✨ Batch complete. Files saved to: {output_dir}")
