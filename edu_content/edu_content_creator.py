@@ -157,13 +157,38 @@ def merge_sequential_lessons(input_dir, output_filename="merged_output.mp4", tar
     print(f"✨ Success! Merged video saved to: {output_path}")
     return output_path
 
+import os
+import json
+import subprocess
+import re
+from pathlib import Path
+
+def parse_selection(selection_str):
+    """Parses strings like '1, 2-5, 10' into a sorted list of unique integers."""
+    indices = set()
+    # Split by comma and clean whitespace
+    parts = [p.strip() for p in selection_str.split(',')]
+    for part in parts:
+        if '-' in part:
+            start, end = map(int, part.split('-'))
+            indices.update(range(start, end + 1))
+        elif part.isdigit():
+            indices.add(int(part))
+    return sorted(list(indices))
+
 def run_shorts_batch(category, speed, caption, scale):
-    """Processes batch shorts and exports matching JSON metadata for thumbnails."""
+    """Processes specific user-selected videos and exports matching JSON metadata."""
     output_dir = BASE_PATH / "output" / "output_shorts"
     output_dir.mkdir(parents=True, exist_ok=True)
     asset_dir = BASE_PATH / "edu_content" / "attachments" / category / "shorts"
     
-    # Theme Logic
+    # 1. Selection Input
+    print("\n--- Batch Selection ---")
+    print("Example: '1' or '1, 3-5' or '10-20'")
+    selection_input = input("Enter video numbers to process: ").strip()
+    selected_nums = parse_selection(selection_input)
+    
+    # 2. Theme Logic
     colors = {"box": "red", "text": "white"} if category == "math" else {"box": "0x00ffff", "text": "black"}
     
     paths = {
@@ -181,22 +206,35 @@ def run_shorts_batch(category, speed, caption, scale):
     with open(JSON_METADATA_PATH, 'r', encoding='utf-8') as f:
         master_metadata = json.load(f)
 
-    raw_videos = sorted([f for f in MAIN_V_DIR.iterdir() if f.suffix.lower() == ".mp4"], key=os.path.getctime)
+    print(f"\n🚀 Preparing to process {len(selected_nums)} videos...")
 
-    print(f"\n🚀 Starting Shorts Batch: {len(raw_videos)} videos found.")
+    for num in selected_nums:
+        # Construct path for files named 1.mp4, 2.mp4, etc.
+        video_path = MAIN_V_DIR / f"{num}.mp4"
+        
+        if not video_path.exists():
+            print(f"⚠️ Warning: {video_path.name} not found in pool. Skipping.")
+            continue
 
-    for video_path, seo_package in zip(raw_videos, master_metadata):
+        # metadata is 0-indexed, so 1.mp4 = index 0
+        meta_index = num - 1
+        if meta_index >= len(master_metadata):
+            print(f"⚠️ Warning: No metadata found for video {num}. Skipping.")
+            continue
+            
+        seo_package = master_metadata[meta_index]
         raw_title = seo_package.get("title", "Untitled")
         safe_name = sanitize_filename(raw_title)
         
+        # --- Matching-Pair Naming Convention ---
         out_v = output_dir / f"{safe_name}.mp4"
-        out_j = output_dir / f"{safe_name}.json" # For Thumbnail/Upload use
+        out_j = output_dir / f"{safe_name}.json"
         
         W, H = 1080, 1920
         target_w = int(W * (scale / 100))
         pts_val = 1.0 / speed
         
-        # Calculate timing for caption
+        # Calculate timing
         d_intro = get_duration(paths["v1"])
         d_main = get_duration(video_path) / speed
         d_outro = get_duration(paths["v3"])
@@ -233,7 +271,7 @@ def run_shorts_batch(category, speed, caption, scale):
         ]
 
         try:
-            print(f"🎬 Processing: {video_path.name} -> {safe_name}.mp4")
+            print(f"\n🎬 [{num}] Processing: {video_path.name} -> {safe_name}.mp4")
             subprocess.run(cmd, check=True, capture_output=True)
             
             # --- METADATA EXPORT ---
@@ -244,6 +282,8 @@ def run_shorts_batch(category, speed, caption, scale):
         except subprocess.CalledProcessError as e:
             print(f"❌ FFmpeg Error on {video_path.name}: {e.stderr.decode()}")
 
+    print(f"\n✨ Batch complete. Output saved to: {output_dir}")
+    
 # --- MAIN INTERFACE ---
 if __name__ == "__main__":
     print("====================================")
