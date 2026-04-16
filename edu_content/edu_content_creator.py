@@ -157,12 +157,6 @@ def merge_sequential_lessons(input_dir, output_filename="merged_output.mp4", tar
     print(f"✨ Success! Merged video saved to: {output_path}")
     return output_path
 
-import os
-import json
-import subprocess
-import re
-from pathlib import Path
-
 def parse_selection(selection_str):
     """Parses strings like '1, 2-5, 10' into a sorted list of unique integers."""
     indices = set()
@@ -283,7 +277,7 @@ def run_shorts_batch(category, speed, caption, scale):
             print(f"❌ FFmpeg Error on {video_path.name}: {e.stderr.decode()}")
 
     print(f"\n✨ Batch complete. Output saved to: {output_dir}")
-    
+
 # --- MAIN INTERFACE ---
 if __name__ == "__main__":
     print("====================================")
