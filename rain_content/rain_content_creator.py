@@ -388,24 +388,30 @@ def process_shorts_batch():
 
 def process_live_content():
     """
-    Optimized Live Content Generator:
-    1. Fixes missing logo by using -loop 1 on image inputs.
-    2. Explicitly scales logos within the filter chain to match target res.
-    3. Maintains 2-stage assembly for speed.
+    Optimized Live Content Generator with Multi-Track Audio Mixing.
+    Blends Rain, SFX, and Music paths with percentage-based volume control.
     """
     # 1. Path Configurations
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
-    audio_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input\audio_pools")
-    live_asset_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\attachments\live")
-    output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_live")
+    base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
+    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
+    audio_base_dir = base_path / "input" / "audio_pools"
+    live_asset_dir = base_path / "rain_content" / "attachments" / "live"
+    output_dir = base_path / "output" / "output_live"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. Source Selection
+    # 2. Source Selection (Video + Audio Tracks)
     video_input = select_video_file(source_dir)
-    audio_input = select_audio_file(audio_base_dir)
-    if not video_input or not audio_input: return
+    rain_input = select_audio_file(audio_base_dir / "rain") # Primary Track
+    
+    if not video_input or not rain_input: 
+        print("Essential video or rain audio missing.")
+        return
 
-    # 3. Format Configuration
+    # Optional Tracks
+    sfx_input = select_optional_file(audio_base_dir / "sfx", "Secondary SFX")
+    music_input = select_optional_file(audio_base_dir / "music", "Tertiary Music")
+
+    # 3. Format & Timing Configuration
     custom_name = input("\n📁 Output filename: ").strip()
     if not custom_name.endswith(".mp4"): custom_name += ".mp4"
 
@@ -418,17 +424,25 @@ def process_live_content():
     target_minutes = int(input("Enter final length in MINUTES (1min yield 1min): "))
     target_seconds = target_minutes * 60
 
+    # 4. Volume Allocation Section
+    print("\n--- Volume Allocation ---")
+    try:
+        rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
+        sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.0
+        music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0.0
+    except ValueError:
+        rain_vol, sfx_vol, music_vol = 0.75, 0.15, 0.10
+
     # Resolution Maps
     h_res = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", "2k": "2560:1440", "4k": "3840:2160"}
     v_res = {"480p": "480:854", "720p": "720:1280", "1080p": "1080:1920", "2k": "1440:2560", "4k": "2160:3840"}
 
-    # 4. Filter Configuration with Explicit Scaling
+    # 5. Visual Filter Configuration
     if ar_choice == '2':
         res = v_res.get(res_choice, "1080:1920")
         t_w, t_h = res.split(':')
         logo_path = live_asset_dir / "screen-logo_9_16.png"
-        # Scale video to vertical, then overlay scaled logo
-        filter_complex = (
+        filter_v = (
             f"[0:v]scale=-1:{t_h},crop={t_w}:{t_h}:(in_w-out_w)/2:0,setsar=1[bg];"
             f"[1:v]scale={t_w}:{t_h}[l_scaled];"
             f"[bg][l_scaled]overlay=0:0:enable='gt(t,5)'[v]"
@@ -437,12 +451,33 @@ def process_live_content():
         res = h_res.get(res_choice, "1920:1080")
         t_w, t_h = res.split(':')
         logo_path = live_asset_dir / "screen-logo_16_9.png"
-        # Scale video to horizontal, then overlay scaled logo
-        filter_complex = (
+        filter_v = (
             f"[0:v]scale={res}:force_original_aspect_ratio=increase,crop={res},setsar=1[bg];"
             f"[1:v]scale={t_w}:{t_h}[l_scaled];"
             f"[bg][l_scaled]overlay=0:0:enable='gt(t,5)'[v]"
         )
+
+    # 6. Audio Mixing Configuration (Applied in Stage 2)
+    # Start inputs for audio at index 1 in the second subprocess call
+    audio_inputs_cmd = ["-stream_loop", "-1", "-i", str(rain_input)]
+    filter_a = f"[1:a]volume={rain_vol}[rain];"
+    mix_labels = "[rain]"
+    mix_count = 1
+
+    if sfx_input:
+        audio_inputs_cmd += ["-stream_loop", "-1", "-i", str(sfx_input)]
+        filter_a += f"[{1 + mix_count}:a]volume={sfx_vol}[sfx];"
+        mix_labels += "[sfx]"
+        mix_count += 1
+    
+    if music_input:
+        audio_inputs_cmd += ["-stream_loop", "-1", "-i", str(music_input)]
+        filter_a += f"[{1 + mix_count}:a]volume={music_vol}[music];"
+        mix_labels += "[music]"
+        mix_count += 1
+
+    filter_a += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0[a_mixed];"
+    filter_a += f"[a_mixed]{AUDIO_PROFILES['live']}[final_a]"
 
     # Temporary files
     tile_file = output_dir / "temp_live_tile.mp4"
@@ -450,21 +485,21 @@ def process_live_content():
     final_output = output_dir / custom_name
 
     try:
-        # --- STAGE 1: Create Master Tile ---
-        print(f"\n[1/2] Encoding 1-minute master tile with logo...")
+        # --- STAGE 1: Create Master Visual Tile (No Audio) ---
+        print(f"\n[1/2] Encoding 1-minute visual master tile...")
         subprocess.run([
             "ffmpeg", "-y", 
             "-stream_loop", "-1", "-i", str(video_input), 
-            "-loop", "1", "-i", str(logo_path),  # FIX: -loop 1 makes the image persistent
-            "-filter_complex", filter_complex,
+            "-loop", "1", "-i", str(logo_path),
+            "-filter_complex", filter_v,
             "-map", "[v]",
-            "-t", "60", # The master tile is 1 minute
+            "-t", "60",
             "-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-an", 
             str(tile_file)
         ], check=True)
 
-        # --- STAGE 2: Final Assembly ---
-        print(f"[2/2] Assembling {target_minutes}m video (Stream Copying)...")
+        # --- STAGE 2: Final Assembly & Audio Mixing ---
+        print(f"[2/2] Mixing audio and assembling {target_minutes}m video...")
         
         with open(list_file, "w") as f:
             for _ in range(target_minutes):
@@ -472,14 +507,14 @@ def process_live_content():
 
         subprocess.run([
             "ffmpeg", "-y", 
-            "-f", "concat", "-safe", "0", "-i", str(list_file), 
-            "-stream_loop", "-1", "-i", str(audio_input),
-            "-map", "0:v", "-map", "1:a",
+            "-f", "concat", "-safe", "0", "-i", str(list_file)
+        ] + audio_inputs_cmd + [
+            "-filter_complex", filter_a,
+            "-map", "0:v", "-map", "[final_a]",
             "-c:v", "copy", 
-            "-af", AUDIO_PROFILES["live"], 
             "-c:a", "aac", "-b:a", "192k",
             "-t", str(target_seconds),
-            "-shortest", str(final_output)
+            str(final_output)
         ], check=True)
 
         print(f"\n✅ Done! File saved: {final_output}")
