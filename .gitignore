@@ -22,3 +22,5 @@ queries.md
 reaction_content/cookies.txt
 
 */*/__pycache__/*
+*/auto_input/*
+*/bat/*
