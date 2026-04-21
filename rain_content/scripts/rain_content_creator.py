@@ -10,7 +10,7 @@ import re
 root_path = Path(__file__).resolve().parent.parent
 sys.path.append(str(root_path))
 
-from rain_content.scripts import thumbnail_extractor
+from scripts import thumbnail_extractor
 
 # --- CORE UTILITY FUNCTIONS ---
 
