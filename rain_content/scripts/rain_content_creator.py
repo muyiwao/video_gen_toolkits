@@ -164,7 +164,7 @@ def process_long_content():
     list_file = output_dir / "concat_list.txt"
     final_output = output_dir / f"Final_Rain_Mixed_{target_minutes}min.mp4"
 
-    sub_text = "More rain content is on the way; subscribe so you never miss a moment of calm"
+    sub_text = "More rain content is on the way; 🙏Subscribe🔔 so you never miss a moment of calm"
     text_color = "0x5cf629" 
 
     try:
@@ -196,7 +196,7 @@ def process_long_content():
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
-            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=20:fontcolor={text_color}:"
+            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=22:fontcolor={text_color}:"
             f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-th-60:enable='gt(t,5)':"
             f"box=1:boxcolor=black@0.4:boxborderw=12:"
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
