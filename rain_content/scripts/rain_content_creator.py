@@ -93,7 +93,7 @@ def process_long_content():
     output_dir.mkdir(parents=True, exist_ok=True)
     img_logo_path = asset_dir / "screen-logo.png"
     
-    # 2. SELECTION
+    # 2. SELECTION (Assumes helper functions select_video_file, etc. are defined)
     video_input = select_video_file(source_dir) 
     rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain") 
     
@@ -102,7 +102,7 @@ def process_long_content():
     sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
     music_input = select_optional_file(music_pool, "Tertiary Music")
 
-    # --- RAIN INTENSITY / SPEED SECTION ---
+    # --- Rain Speed Adjustment ---
     print("\n--- Rain Speed Adjustment ---")
     try:
         speed_input = input("Enter Speed Factor [Default 1.0]: ").strip()
@@ -110,7 +110,7 @@ def process_long_content():
     except ValueError:
         speed_factor = 1.0
 
-    # --- VOLUME ALLOCATION SECTION ---
+    # --- Volume Allocation ---
     print("\n--- Volume Allocation ---")
     try:
         rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
@@ -120,42 +120,24 @@ def process_long_content():
         rain_vol, sfx_vol, music_vol = 0.75, 0.15, 0.10
 
     # 3. Resolution
-    res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080"}
+    res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", "2k": "2560:1440", "4k": "3840:2160"}
     res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
-    # --- DURATION PREDICTION & APPROVAL LOOP ---
+    # --- DURATION PREDICTION ---
     duration, _ = get_video_info(video_input)
     adj_duration = duration * speed_factor
     fade_dur = 1.0
-    loop_duration = adj_duration - fade_dur # The actual 'usable' time per loop
+    loop_duration = adj_duration - fade_dur 
 
     while True:
         try:
             print(f"\n--- Duration Prediction ---")
-            print(f"One loop yields approx. {loop_duration / 60:.2f} minutes of seamless footage.")
-            target_minutes = float(input("Enter DESIRED final length in MINUTES (1.5min yield 1min): "))
-            
-            # Prediction Logic
-            # We calculate how many segments it takes to reach that time
-            total_required_seconds = target_minutes * 60
-            num_loops_needed = math.ceil(total_required_seconds / loop_duration)
-            predicted_raw_input_needed = (num_loops_needed * duration) / 60
-            
-            print(f"\n📝 PREDICTION REPORT:")
-            print(f"Target Output: {target_minutes:.2f} minutes")
-            print(f"Loops Required: {num_loops_needed}")
-            print(f"Estimated Input Needed: {predicted_raw_input_needed:.2f} minutes of recorded footage")
-            print(f"Final File Size Estimate: ~{(target_minutes * 15):.0f} MB (at 1080p)")
-            
-            confirm = input("\nAccept these parameters and start processing? (y/n): ").lower().strip()
-            if confirm == 'y':
-                target_seconds = target_minutes * 60
-                break
-            else:
-                print("Adjustment requested. Please enter a new duration.")
+            target_minutes = float(input("Enter DESIRED final length in MINUTES: "))
+            target_seconds = target_minutes * 60
+            break
         except ValueError:
-            print("❌ Invalid number. Please enter a decimal or integer for minutes.")
+            print("❌ Invalid number.")
 
     # File Paths
     tile_file = output_dir / "temp_master_tile.mp4"
@@ -164,7 +146,7 @@ def process_long_content():
     list_file = output_dir / "concat_list.txt"
     final_output = output_dir / f"Final_Rain_Mixed_{target_minutes}min.mp4"
 
-    sub_text = "More rain content is on the way; 🙏Subscribe🔔 so you never miss a moment of calm"
+    sub_text = "More rain content is on the way; Subscribe so you never miss a moment of calm"
     text_color = "0x5cf629" 
 
     try:
@@ -180,25 +162,27 @@ def process_long_content():
         )
         subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
 
-        # Build 1-minute segment as a standard block
         tiles_in_one_min = math.ceil(60 / loop_duration)
         with open(list_file, "w") as f:
             for _ in range(tiles_in_one_min): f.write(f"file '{tile_file.name}'\n")
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
-        # --- STAGE 2: ASSEMBLE MASTER ---
-        print(f"[2/4] Assembling {target_minutes} Minute Silent Master...")
+        # --- STAGE 2: ASSEMBLE MASTER WITH FULL-WIDTH TICKER ---
+        print(f"[2/4] Assembling {target_minutes} Minute Silent Master with Ticker...")
         minutes_to_concat = math.ceil(target_minutes)
         with open(list_file, "w") as f:
             for _ in range(minutes_to_concat): f.write(f"file '{segment_file.name}'\n")
 
-        scroll_speed = 60
+        scroll_speed = 100
+        # drawbox logic: x=0, y=bottom, w=iw (input width), h=60 pixels high
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
-            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=22:fontcolor={text_color}:"
-            f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-th-60:enable='gt(t,5)':"
-            f"box=1:boxcolor=black@0.4:boxborderw=12:"
+            # 1. Draw Static Black Bar (Full width)
+            f"[v_logo]drawbox=y=ih-80:color=black@0.6:width=iw:height=60:t=fill:enable='gt(t,5)'[v_bg];"
+            # 2. Draw Scrolling Text (Centered in that bar)
+            f"[v_bg]drawtext=text='{sub_text}':font='Arial':fontsize=24:fontcolor={text_color}:"
+            f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-62:enable='gt(t,5)':"            
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
         )
 
@@ -210,8 +194,8 @@ def process_long_content():
             "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
         ], check=True)
 
-        # --- STAGE 4: AUDIO MIX ---
-        print(f"\n[4/4] Blending Audio Tracks...")
+        # --- STAGE 3: AUDIO MIX ---
+        print(f"\n[3/4] Blending Audio Tracks...")
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
         filter_audio = f"[1:a]volume={rain_vol}[rain];"
         mix_labels = "[rain]"
@@ -231,21 +215,21 @@ def process_long_content():
 
         filter_audio += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0:normalize=0[a_mixed]"
 
-        cmd = [
+        subprocess.run([
             "ffmpeg", "-y", "-i", str(temp_no_audio)
         ] + audio_inputs + [
             "-filter_complex", filter_audio,
             "-map", "0:v", "-map", "[a_mixed]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "320k",
             "-shortest", str(final_output)
-        ]
+        ], check=True)
 
-        subprocess.run(cmd, check=True)
-        print(f"\n✅ SUCCESS! {target_minutes}min video created.")
+        print(f"\n✅ SUCCESS! {target_minutes}min video created: {final_output.name}")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
     finally:
+        # Cleanup temp files
         for temp in [tile_file, segment_file, list_file, temp_no_audio]:
             if temp.exists(): temp.unlink()
 
