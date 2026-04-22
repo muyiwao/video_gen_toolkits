@@ -11,7 +11,7 @@ from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_vid
 root_path = Path(__file__).resolve().parent.parent
 sys.path.append(str(root_path))
 
-from edu_content.scripts import generate_thumbnail
+from scripts import generate_thumbnail
 
 # --- CONFIGURATION ---
 BASE_PATH = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
