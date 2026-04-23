@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 import sys
 from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
+import moviepy.video.fx as vfx 
 
 # Adds the project root to the python path
 root_path = Path(__file__).resolve().parent.parent
@@ -94,67 +95,119 @@ def run_long_editor(category, speed):
     subprocess.run(cmd, check=True)
     print(f"✨ SUCCESS: {output_file}")
 
+# --- NEW UTILITY FOR AUDIO CLEANUP ---
+
+def silence_banned_phrases(clip):
+    """
+    Replaces the first 1.5s of audio with a 'NEXT' voiceover.
+    Ensure 'next_voiceover.mp3' exists in your assets folder.
+    """
+    if clip.audio is None:
+        return clip
+    
+    duration = clip.duration
+    if duration <= 1.5:
+        return clip.without_audio()
+
+    # 1. Get the 'Clean' part of the original audio
+    original_clean_audio = clip.audio.subclipped(1.5, duration).with_start(1.5)
+    
+    # 2. Try to load the 'NEXT' replacement audio
+    replacement_path = BASE_PATH / "edu_content" / "assets" / "next_voiceover.mp3"
+    
+    if replacement_path.exists():
+        # Load replacement and ensure it doesn't exceed the 1.5s window
+        next_audio = AudioFileClip(str(replacement_path)).subclip(0, 1.5)
+        
+        # Combine: [NEXT (0-1.5s)] + [Original (1.5s+)]
+        combined_audio = CompositeAudioClip([next_audio, original_clean_audio])
+        return clip.with_audio(combined_audio)
+    else:
+        print(f"⚠️ Replacement audio not found at {replacement_path}. Falling back to silence.")
+        return clip.with_audio(original_clean_audio)
+
 def merge_sequential_lessons(input_dir, output_filename="merged_output.mp4", target_res=(1280, 720)):
     """
-    Scans a directory for numbered .mp4 files (1.mp4, 2.mp4, etc.),
-    inserts a countdown/number slide before each, and merges them.
+    Merges numbered videos with high-resolution output and automated audio cleaning.
     """
     input_path = Path(input_dir)
     output_path = input_path / output_filename
     
-    # Configuration
+    TRANSITION_DURATION = 0.5  
     NUMBER_DURATION = 2
     FONT_SIZE = 200
 
-    # 1. Dynamically find all files that are named with numbers (e.g., '1.mp4', '12.mp4')
-    # This prevents errors if you have 5 files or 50 files.
+    # 1. Gather and sort files
     video_files = [f for f in input_path.glob("*.mp4") if f.stem.isdigit()]
-    
-    # Sort them numerically (so '10' comes after '2')
     video_files.sort(key=lambda x: int(x.stem))
 
     if not video_files:
-        print(f"⚠️ No numbered MP4 files found in {input_dir}")
-        return None
+        print(f"⚠️ No numbered MP4 files found in {input_dir}"); return None
 
-    print(f"🔗 Found {len(video_files)} videos. Starting merge...")
+    # 2. Runtime Options
+    print("\n--- Merge Configuration ---")
+    print("1. Clean Merge (No Slides) | 2. Transition Slides (Numbers)")
+    merge_type = input("Select Type: ").strip()
+    
+    print("3. Simple Cut (Fast) | 4. Crossfade (Smooth)")
+    transition_choice = input("Select Style: ").strip()
+    
+    use_transitions = (merge_type == "2")
+    apply_crossfade = (transition_choice == "4")
 
-    clips = []
+    processed_clips = []
 
+    # 3. Process Each Clip
     for file_path in video_files:
-        # Load and resize the source video
+        print(f"🎬 Processing: {file_path.name}")
         video_clip = VideoFileClip(str(file_path)).resized(target_res)
+        
+        # Apply the silence filter
+        video_clip = silence_banned_phrases(video_clip)
 
-        # Create the text clip (using the file's own number)
-        number_text = TextClip(
-            text=file_path.stem,
-            font_size=FONT_SIZE,
-            color="white",
-            size=target_res
-        ).with_duration(NUMBER_DURATION)
+        # Handle Number Slides
+        if use_transitions:
+            number_text = TextClip(
+                text=file_path.stem,
+                font_size=FONT_SIZE,
+                color="white",
+                size=target_res,
+                font="Arial"
+            ).with_duration(NUMBER_DURATION)
+            
+            number_slide = CompositeVideoClip([number_text.with_position("center")], size=target_res)
+            
+            if apply_crossfade:
+                number_slide = number_slide.with_effects([
+                    vfx.FadeIn(duration=TRANSITION_DURATION), 
+                    vfx.FadeOut(duration=TRANSITION_DURATION)
+                ])
+            processed_clips.append(number_slide)
+        
+        # Handle Video Transitions
+        if apply_crossfade:
+            video_clip = video_clip.with_effects([
+                vfx.FadeIn(duration=TRANSITION_DURATION), 
+                vfx.FadeOut(duration=TRANSITION_DURATION)
+            ])
+            
+        processed_clips.append(video_clip)
 
-        # Center the text in a composite clip
-        number_clip = CompositeVideoClip(
-            [number_text.with_position("center")],
-            size=target_res
-        ).with_duration(NUMBER_DURATION)
+    # 4. Final Concatenation
+    # padding < 0 creates the overlap required for the crossfade effect
+    padding = -TRANSITION_DURATION if apply_crossfade else 0
+    final_video = concatenate_videoclips(processed_clips, method="compose", padding=padding)
 
-        clips.append(number_clip)
-        clips.append(video_clip)
-
-    # 2. Concatenate all clips
-    final_video = concatenate_videoclips(clips, method="compose")
-
-    # 3. Write the final file
+    # 5. Render
     final_video.write_videofile(
         str(output_path),
         codec="libx264",
         audio_codec="aac",
         fps=30,
-        logger="bar"  # <--- Change 'None' to 'bar' to see the progress
+        logger="bar"
     )
 
-    print(f"✨ Success! Merged video saved to: {output_path}")
+    print(f"✨ SUCCESS: {output_path}")
     return output_path
 
 def parse_selection(selection_str):
