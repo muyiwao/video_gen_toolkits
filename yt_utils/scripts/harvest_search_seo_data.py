@@ -24,8 +24,8 @@ def select_input_file(directory):
     return None
 
 def harvest_search_seo_data():
-    """Extracts SEO metadata with per-video error handling."""
-    print("\n--- YouTube Resilient SEO Metadata Harvester ---")
+    """Extracts SEO metadata with user-defined subscriber and date filters."""
+    print("\n--- YouTube Underdog SEO Harvester ---")
     
     input_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input\text_files")
     output_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\yt_utils\yt_dls")
@@ -40,41 +40,49 @@ def harvest_search_seo_data():
 
     print(f"✅ Loaded {len(queries)} items from {selected_file.name}")
 
+    # --- Runtime Configuration ---
     try:
-        num_videos = int(input("\n🔢 Videos per query to analyze? (e.g., 5): "))
+        num_to_scan = int(input("\n🔢 How many top videos to SCAN per query? (e.g., 50): ") or 50)
+        
+        sub_input = input("👥 Max Subscriber Limit? [Default 100000]: ").strip()
+        sub_limit = int(sub_input) if sub_input else 100000
+
+        print("\n📅 Select Search Date Range:")
+        print("1. Past Week")
+        print("2. Past Month")
+        print("3. Past Year")
+        print("4. All Time")
+        date_choice = input("Choice (1-4): ").strip()
+        
+        date_map = {"1": 7, "2": 30, "3": 365}
+        if date_choice in date_map:
+            date_limit = datetime.now() - timedelta(days=date_map[date_choice])
+            date_filter = date_limit.strftime('%Y%m%d')
+        else:
+            date_filter = None  # All Time
+
     except ValueError:
-        return
+        print("❌ Invalid input. Using defaults.")
+        num_to_scan = 50
+        sub_limit = 100000
+        date_filter = None
 
-    # --- Filter Selection ---
-    sort_choice = input("\nSort: 1. Relevance, 2. Popularity: ").strip()
-    date_choice = input("Date: 1. Any, 2. Today, 3. Week, 4. Month, 5. Year: ").strip()
-
-    sort_map = {"1": "relevance", "2": "view_count"}
-    search_sort = sort_map.get(sort_choice, "relevance")
-
-    date_map = {"2": 0, "3": 7, "4": 30, "5": 365}
-    date_filter = None
-    if date_choice in date_map:
-        date_limit = datetime.now() - timedelta(days=date_map[date_choice])
-        date_filter = date_limit.strftime('%Y%m%d')
-
+    search_sort = "view_count"
     output_base_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_filename = output_base_dir / f"master_seo_report_{selected_file.stem}_{timestamp}.txt"
+    output_filename = output_base_dir / f"underdog_seo_report_{selected_file.stem}_{timestamp}.txt"
 
-    # Search Options (Flat extraction to get IDs first)
     search_opts = {
         'extract_flat': True,
         'quiet': True,
         'no_warnings': True,
-        'playlist_items': f"1-{num_videos}",
+        'playlist_items': f"1-{num_to_scan}",
         'search_sort': search_sort,
         'ignoreerrors': True,
     }
     if date_filter:
         search_opts['dateafter'] = date_filter
 
-    # Individual Video Options
     video_opts = {
         'extract_flat': False,
         'quiet': True,
@@ -83,61 +91,57 @@ def harvest_search_seo_data():
 
     with open(output_filename, "w", encoding="utf-8") as f:
         f.write("============================================================\n")
-        f.write("          RESILIENT SEO METADATA REPORT\n")
+        f.write(f"       UNDERDOG SEO REPORT: CHANNELS < {sub_limit:,} SUBS\n")
+        f.write(f"       DATE RANGE: {'Since ' + date_filter if date_filter else 'All Time'}\n")
         f.write("============================================================\n\n")
 
-        for q_idx, raw_query in enumerate(queries, 1):
-            if "youtube.com/results" in raw_query:
-                search_match = re.search(r"search_query=([^&]+)", raw_query)
-                query = unquote(search_match.group(1).replace('+', ' ')) if search_match else raw_query
-            else:
-                query = raw_query
-
-            print(f"\n🔎 [{q_idx}/{len(queries)}] Searching: {query}")
+        for q_idx, query in enumerate(queries, 1):
+            print(f"\n🔎 [{q_idx}/{len(queries)}] Scanning: {query}")
             f.write(f"--- SEARCH BATCH {q_idx}: {query} ---\n\n")
 
             try:
                 with yt_dlp.YoutubeDL(search_opts) as ydl:
-                    search_url = query if query.startswith(('http', 'www')) else f"ytsearch{num_videos}:{query}"
+                    search_url = f"ytsearch{num_to_scan}:{query}"
                     search_result = ydl.extract_info(search_url, download=False)
                     video_entries = search_result.get('entries', [])
 
+                found_count = 0
                 for v_idx, entry in enumerate(video_entries, 1):
                     if not entry: continue
-                    v_url = entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}"
+                    v_url = f"https://www.youtube.com/watch?v={entry.get('id')}"
                     
-                    # Inner Try-Except: If one video fails, continue to next video in same query
                     try:
                         with yt_dlp.YoutubeDL(video_opts) as ydl_video:
                             video = ydl_video.extract_info(v_url, download=False)
+                            sub_count = video.get('channel_follower_count')
                             
-                            title = video.get('title', 'N/A')
-                            desc = video.get('description', 'N/A') or ""
-                            tags = video.get('tags', [])
-                            views = video.get('view_count', 0)
-                            upload_date = video.get('upload_date', 'N/A')
+                            if sub_count is not None and sub_count < sub_limit:
+                                found_count += 1
+                                title = video.get('title', 'N/A')
+                                channel = video.get('uploader', 'N/A')
+                                tags = video.get('tags', [])
+                                views = video.get('view_count', 0)
+                                upload_date = video.get('upload_date', 'N/A')
 
-                            print(f"   [{v_idx}/{len(video_entries)}] Analyzing: {title[:40]}...")
+                                print(f"   ✨ MATCH: {title[:40]}... ({sub_count:,} subs)")
 
-                            f.write(f"VIDEO #{q_idx}.{v_idx}\n")
-                            f.write(f"TITLE: {title}\n")
-                            f.write(f"VIEWS: {views:,}\n") 
-                            f.write(f"UPLOAD DATE: {upload_date}\n")
-                            f.write(f"URL: {v_url}\n")
-                            
-                            clean_desc = " ".join([l.strip() for l in desc.split('\n') if l.strip()][:3])
-                            f.write(f"CORE DESCRIPTION:\n{clean_desc}\n")
-                            f.write(f"TAGS: {', '.join(tags) if tags else 'None'}\n\n")
+                                f.write(f"MATCH #{found_count} (Rank: {v_idx})\n")
+                                f.write(f"CHANNEL: {channel} | SUBS: {sub_count:,}\n")
+                                f.write(f"TITLE: {title}\n")
+                                f.write(f"VIEWS: {views:,} | DATE: {upload_date}\n")
+                                f.write(f"URL: {v_url}\n")
+                                f.write(f"TAGS: {', '.join(tags) if tags else 'None'}\n\n")
 
-                    except Exception as ve:
-                        print(f"   [{v_idx}/{len(video_entries)}] ⚠️ Video failed: {ve}")
-                        f.write(f"VIDEO #{q_idx}.{v_idx}: ❌ SKIPPED (Private or Unavailable)\n\n")
+                    except Exception:
+                        continue
                 
-                f.write("*" * 40 + "\n\n")
+                if found_count == 0:
+                    f.write(f"No channels under {sub_limit:,} found for this query.\n\n")
+                
+                f.write("-" * 40 + "\n\n")
 
             except Exception as qe:
-                print(f"⚠️ Search failed for query {q_idx}: {qe}")
-                f.write(f"❌ Error in Search Query: {qe}\n\n")
+                print(f"⚠️ Search failed: {qe}")
 
     print(f"\n✨ COMPLETE! Saved to:\n{output_filename}")
 
