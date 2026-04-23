@@ -112,7 +112,7 @@ def silence_banned_phrases(clip):
     original_clean_audio = clip.audio.subclipped(1.5, duration).with_start(1.5)
     
     # 2. Try to load the 'NEXT' replacement audio
-    replacement_path = BASE_PATH / "edu_content" / "assets" / "next_voiceover.mp3"
+    replacement_path = BASE_PATH / "edu_content" / "attachments" / "next_voiceover.mp3"
     
     if replacement_path.exists():
         # Load replacement and ensure it doesn't exceed the 1.5s window
