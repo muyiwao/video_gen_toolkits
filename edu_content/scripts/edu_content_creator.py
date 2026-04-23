@@ -116,7 +116,7 @@ def silence_banned_phrases(clip):
     
     if replacement_path.exists():
         # Load replacement and ensure it doesn't exceed the 1.5s window
-        next_audio = AudioFileClip(str(replacement_path)).subclip(0, 1.5)
+        next_audio = AudioFileClip(str(replacement_path)).subclipped(0, 1.5)
         
         # Combine: [NEXT (0-1.5s)] + [Original (1.5s+)]
         combined_audio = CompositeAudioClip([next_audio, original_clean_audio])
