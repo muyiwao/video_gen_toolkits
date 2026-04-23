@@ -5,7 +5,7 @@ import re
 import shutil
 from pathlib import Path
 import sys
-from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
+from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, CompositeAudioClip, concatenate_videoclips
 import moviepy.video.fx as vfx 
 
 # Adds the project root to the python path
