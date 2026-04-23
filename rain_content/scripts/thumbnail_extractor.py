@@ -8,38 +8,43 @@ THUMB_OUT_DIR = Path(r'C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\
 THUMB_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- 4K & SIZE CONFIGURATION ---
-TARGET_WIDTH = 3840  # 4K UHD Width
-MAX_FILE_SIZE_MB = 48 # Safe buffer under 49MB
+TARGET_WIDTH = 3840  
+MAX_FILE_SIZE_MB = 48 
 MAX_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
-def apply_universal_rain_logic(image, hero_diff_mask):
+# --- RAIN INTENSITY CONFIGURATION ---
+RAIN_TYPES = {
+    "1": {"name": "Heavy Rain", "thresh": 8, "glow": 0.8, "offset": 30, "blur": 5},
+    "2": {"name": "Soft Drizzle", "thresh": 18, "glow": 0.3, "offset": 10, "blur": 3},
+    "3": {"name": "Rain Thunderstorm", "thresh": 6, "glow": 1.1, "offset": 45, "blur": 7},
+    "4": {"name": "Windy Rain", "thresh": 10, "glow": 0.7, "offset": 25, "blur": 9}
+}
+
+def apply_universal_rain_logic(image, hero_diff_mask, rain_config):
     """
-    Produces a 4K output while enhancing rain streaks via motion masking.
+    Produces a 4K output with intensity-adjusted rain highlights.
     """
-    # 1. Precise 4K Upscale
-    # We use INTER_LANCZOS4 for the highest quality resample possible
     h, w = image.shape[:2]
     aspect_ratio = w / h
     target_height = int(TARGET_WIDTH / aspect_ratio)
     
+    # 1. High-Quality 4K Upscale
     image_4k = cv2.resize(image, (TARGET_WIDTH, target_height), interpolation=cv2.INTER_LANCZOS4)
-    
-    # Resize the motion mask to match 4K
     rain_mask = cv2.resize(hero_diff_mask, (TARGET_WIDTH, target_height), interpolation=cv2.INTER_LINEAR)
     
-    # 2. Refine Rain Mask for 4K Density
-    # Increased kernel sizes slightly to account for higher pixel density in 4K
-    rain_mask = cv2.GaussianBlur(rain_mask, (5, 5), 0)
-    _, rain_mask = cv2.threshold(rain_mask, 12, 255, cv2.THRESH_BINARY)
+    # 2. Dynamic Mask Refinement based on Rain Type
+    # Lower threshold = more rain detected; higher blur = thicker streaks
+    rain_mask = cv2.GaussianBlur(rain_mask, (rain_config['blur'], rain_config['blur']), 0)
+    _, rain_mask = cv2.threshold(rain_mask, rain_config['thresh'], 255, cv2.THRESH_BINARY)
     
-    # 3. Non-Destructive Highlight
-    # We lift the raindrops specifically so they are visible on high-res displays
-    rain_overlay = cv2.addWeighted(image_4k, 1.0, image_4k, 0.6, 25) 
+    # 3. Intensity-Adjusted Highlight
+    # We use the 'glow' and 'offset' to make rain pop without hitting global contrast
+    rain_overlay = cv2.addWeighted(image_4k, 1.0, image_4k, rain_config['glow'], rain_config['offset']) 
     
-    # Soften the mask for seamless blending at 4K
+    # Soften blending for 4K
     soft_mask = cv2.GaussianBlur(rain_mask, (7, 7), 0).astype(np.float32) / 255.0
     
-    # Merge: Final 4K Image
+    # 4. Merge
     final_4k = (image_4k * (1 - soft_mask[:,:,np.newaxis]) + 
                 rain_overlay * soft_mask[:,:,np.newaxis]).astype(np.uint8)
 
@@ -53,7 +58,6 @@ def get_hero_frame_with_mask(video_path):
     if not ret: return None, None
     g1 = cv2.cvtColor(f1, cv2.COLOR_BGR2GRAY)
 
-    # Scan 300 frames to ensure we find a high-motion "Hero" moment
     for i in range(300):
         ret, f2 = cap.read()
         if not ret: break
@@ -73,22 +77,18 @@ def get_hero_frame_with_mask(video_path):
     return best_frame, best_mask
 
 def save_with_size_constraint(image, out_path):
-    # Start at Quality 100 for 4K detail
     quality = 100
     success = False
-    
     while quality > 50:
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
         result, encimg = cv2.imencode('.jpg', image, encode_param)
-        
-        current_size = len(encimg)
-        if current_size <= MAX_SIZE_BYTES:
+        if len(encimg) <= MAX_SIZE_BYTES:
             with open(out_path, "wb") as f:
                 f.write(encimg)
-            print(f"✅ 4K Saved: {out_path.name} ({current_size/(1024*1024):.2f} MB @ Quality: {quality})")
+            print(f"✅ Saved: {out_path.name} ({len(encimg)/(1024*1024):.2f} MB)")
             success = True
             break
-        quality -= 2 # Slower decrement to stay as close to 49MB as possible
+        quality -= 2 
     return success
 
 def crop_16_9(image):
@@ -103,36 +103,38 @@ def crop_16_9(image):
     s = (h - nh) // 2
     return image[s:s+nh, :]
 
-def select_video_file():
+def generate_4k_rain_thumbs():
+    # --- Video Selection ---
     video_files = sorted(list(VIDEO_DIR.glob("*.mp4")))
-    if not video_files:
-        print("❌ No videos found"); return []
-    print("\n--- 4K Thumbnail Generator ---")
+    if not video_files: return
+    print("\n--- 4K Rain Thumbnail Engine ---")
     for i, file in enumerate(video_files, 1):
         print(f"{i}. {file.name}")
-    print(f"{len(video_files) + 1}. Process ALL")
     
-    choice = input(f"\nSelect (1-{len(video_files) + 1}): ")
-    if choice == str(len(video_files) + 1): return video_files
-    try: return [video_files[int(choice)-1]]
-    except: return []
+    v_choice = input(f"\nSelect Video (1-{len(video_files)}): ")
+    try:
+        target_video = video_files[int(v_choice)-1]
+    except: return
 
-def generate_4k_rain_thumbs():
-    selected_videos = select_video_file()
-    for v in selected_videos:
-        print(f"🔍 Analyzing 4K potential for: {v.name}...")
-        raw, mask = get_hero_frame_with_mask(v)
+    # --- Rain Type Selection ---
+    print("\n--- Select Rain Intensity Mode ---")
+    for k, v in RAIN_TYPES.items():
+        print(f"{k}. {v['name']}")
+    
+    t_choice = input("\nChoice: ")
+    rain_config = RAIN_TYPES.get(t_choice, RAIN_TYPES["1"])
+
+    print(f"\n🔍 Processing {target_video.name} as '{rain_config['name']}'...")
+    
+    raw, mask = get_hero_frame_with_mask(target_video)
+    if raw is not None:
+        raw_cropped = crop_16_9(raw)
+        mask_cropped = crop_16_9(mask)
         
-        if raw is not None:
-            # Crop to 16:9 first so upscale is perfectly proportioned
-            raw_cropped = crop_16_9(raw)
-            mask_cropped = crop_16_9(mask)
-            
-            # Process into 4K
-            enhanced_4k = apply_universal_rain_logic(raw_cropped, mask_cropped)
-            
-            out_path = THUMB_OUT_DIR / f"4K_RAIN_{v.stem}.jpg"
-            save_with_size_constraint(enhanced_4k, out_path)
+        enhanced_4k = apply_universal_rain_logic(raw_cropped, mask_cropped, rain_config)
+        
+        out_name = f"4K_{rain_config['name'].replace(' ', '_').upper()}_{target_video.stem}.jpg"
+        save_with_size_constraint(enhanced_4k, THUMB_OUT_DIR / out_name)
 
 if __name__ == "__main__":
     generate_4k_rain_thumbs()
