@@ -96,33 +96,41 @@ def run_long_editor(category, speed):
     print(f"✨ SUCCESS: {output_file}")
 
 # --- NEW UTILITY FOR AUDIO CLEANUP ---
+
 def silence_banned_phrases(clip):
     """
-    Replaces the first 1.5s of audio with a 'NEXT' voiceover.
-    Ensure 'next_voiceover.mp3' exists in your assets folder.
+    Replaces the start of audio with 'NEXT' voiceover.
+    Fixed to handle replacement files shorter than 1.5s.
     """
     if clip.audio is None:
         return clip
     
+    # The 'Banned' window is 1.5s
+    BANNED_WINDOW = 1.5
     duration = clip.duration
-    if duration <= 1.5:
+    
+    if duration <= BANNED_WINDOW:
         return clip.without_audio()
 
-    # 1. Get the 'Clean' part of the original audio
-    original_clean_audio = clip.audio.subclipped(1.5, duration).with_start(1.5)
+    # 1. Get the 'Clean' part of the original audio (everything after 1.5s)
+    original_clean_audio = clip.audio.subclipped(BANNED_WINDOW, duration).with_start(BANNED_WINDOW)
     
     # 2. Try to load the 'NEXT' replacement audio
     replacement_path = BASE_PATH / "edu_content" / "attachments" / "next_voiceover.mp3"
     
     if replacement_path.exists():
-        # Load replacement and ensure it doesn't exceed the 1.5s window
-        next_audio = AudioFileClip(str(replacement_path)).subclipped(0, 1.5)
+        next_audio = AudioFileClip(str(replacement_path))
         
-        # Combine: [NEXT (0-1.5s)] + [Original (1.5s+)]
+        # FIX: Ensure we don't ask for more time than the file actually has
+        safe_end_time = min(next_audio.duration, BANNED_WINDOW)
+        next_audio = next_audio.subclipped(0, safe_end_time)
+        
+        # Combine: [NEXT (0 to safe_end)] + [Original (starts at 1.5s)]
+        # This creates silence between the end of 'NEXT' and 1.5s if 'NEXT' is short
         combined_audio = CompositeAudioClip([next_audio, original_clean_audio])
         return clip.with_audio(combined_audio)
     else:
-        print(f"⚠️ Replacement audio not found at {replacement_path}. Falling back to silence.")
+        print(f"⚠️ Replacement audio not found. Falling back to silence.")
         return clip.with_audio(original_clean_audio)
 
 def merge_sequential_lessons(input_dir, output_filename="merged_output.mp4", target_res=(1280, 720)):
