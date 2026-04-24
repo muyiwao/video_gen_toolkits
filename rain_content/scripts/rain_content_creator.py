@@ -81,6 +81,23 @@ def select_optional_file(directory, label):
     except (ValueError, IndexError):
         return None
 
+import math
+import subprocess
+from pathlib import Path
+
+def format_duration(total_minutes):
+    """Converts decimal minutes into a formatted string (Hours, Minutes, Seconds)."""
+    total_seconds = int(total_minutes * 60)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    
+    parts = []
+    if hours > 0: parts.append(f"{hours}h")
+    if minutes > 0: parts.append(f"{minutes}m")
+    if seconds > 0: parts.append(f"{seconds}s")
+    return " ".join(parts) if parts else "0s"
+
 def process_long_content():
     # 1. Paths Configuration
     base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
@@ -93,7 +110,7 @@ def process_long_content():
     output_dir.mkdir(parents=True, exist_ok=True)
     img_logo_path = asset_dir / "screen-logo.png"
     
-    # 2. SELECTION (Assumes helper functions select_video_file, etc. are defined)
+    # 2. SELECTION (Assuming helper functions select_video_file, etc. are defined)
     video_input = select_video_file(source_dir) 
     rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain") 
     
@@ -101,6 +118,11 @@ def process_long_content():
 
     sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
     music_input = select_optional_file(music_pool, "Tertiary Music")
+
+    # --- Runtime Caption Input ---
+    print("\n--- Social CTA Ticker ---")
+    default_sub = "More rain content is on the way; Subscribe so you never miss a moment of calm"
+    sub_text = input(f"Enter Ticker Text [Leave blank for default]: ").strip() or default_sub
 
     # --- Rain Speed Adjustment ---
     print("\n--- Rain Speed Adjustment ---")
@@ -124,7 +146,7 @@ def process_long_content():
     res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
-    # --- DURATION PREDICTION ---
+    # --- DURATION PREDICTION & CONVERSION ---
     duration, _ = get_video_info(video_input)
     adj_duration = duration * speed_factor
     fade_dur = 1.0
@@ -132,21 +154,22 @@ def process_long_content():
 
     while True:
         try:
-            print(f"\n--- Duration Prediction ---")
-            target_minutes = float(input("Enter DESIRED final length in MINUTES: "))
-            target_seconds = target_minutes * 60
+            print(f"\n--- Duration Setup ---")
+            target_minutes = float(input("Enter DESIRED final length in DECIMAL MINUTES (e.g., 60 or 2.5): "))
+            target_seconds = int(target_minutes * 60)
+            formatted_time = format_duration(target_minutes)
+            print(f"🕒 Rendering precisely: {formatted_time} ({target_seconds} seconds)")
             break
         except ValueError:
             print("❌ Invalid number.")
 
-    # File Paths
+    # File Paths (Using formatted time for the final filename)
     tile_file = output_dir / "temp_master_tile.mp4"
     segment_file = output_dir / "temp_1min_segment.mp4"
     temp_no_audio = output_dir / "temp_silent_final.mp4"
     list_file = output_dir / "concat_list.txt"
-    final_output = output_dir / f"Final_Rain_Mixed_{target_minutes}min.mp4"
+    final_output = output_dir / f"Rain_Video_{formatted_time.replace(' ', '_')}.mp4"
 
-    sub_text = "More rain content is on the way; Subscribe so you never miss a moment of calm"
     text_color = "0x5cf629" 
 
     try:
@@ -168,19 +191,16 @@ def process_long_content():
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
         # --- STAGE 2: ASSEMBLE MASTER WITH FULL-WIDTH TICKER ---
-        print(f"[2/4] Assembling {target_minutes} Minute Silent Master with Ticker...")
+        print(f"[2/4] Assembling {formatted_time} Silent Master with Ticker...")
         minutes_to_concat = math.ceil(target_minutes)
         with open(list_file, "w") as f:
             for _ in range(minutes_to_concat): f.write(f"file '{segment_file.name}'\n")
 
         scroll_speed = 100
-        # drawbox logic: x=0, y=bottom, w=iw (input width), h=60 pixels high
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
-            # 1. Draw Static Black Bar (Full width)
             f"[v_logo]drawbox=y=ih-80:color=black@0.6:width=iw:height=60:t=fill:enable='gt(t,5)'[v_bg];"
-            # 2. Draw Scrolling Text (Centered in that bar)
             f"[v_bg]drawtext=text='{sub_text}':font='Arial':fontsize=24:fontcolor={text_color}:"
             f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-62:enable='gt(t,5)':"            
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
@@ -195,6 +215,7 @@ def process_long_content():
         ], check=True)
 
         # --- STAGE 3: AUDIO MIX ---
+        # (Audio mixing logic remains largely the same but mapped to final_output)
         print(f"\n[3/4] Blending Audio Tracks...")
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
         filter_audio = f"[1:a]volume={rain_vol}[rain];"
@@ -224,12 +245,11 @@ def process_long_content():
             "-shortest", str(final_output)
         ], check=True)
 
-        print(f"\n✅ SUCCESS! {target_minutes}min video created: {final_output.name}")
+        print(f"\n✅ SUCCESS! {formatted_time} video created: {final_output.name}")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
     finally:
-        # Cleanup temp files
         for temp in [tile_file, segment_file, list_file, temp_no_audio]:
             if temp.exists(): temp.unlink()
 
@@ -517,7 +537,7 @@ if __name__ == "__main__":
         # --- NEW THUMBNAIL PROMPT ---
         make_thumb = input("\n🖼️  Generate thumbnail for this long video? (y/n): ").strip().lower()
         if make_thumb == 'y':
-            thumbnail_extractor.generate_universal_thumbs()
+            thumbnail_extractor.generate_4k_rain_thumbs()
         else:
             print("⏭️  Skipping thumbnail generation.")
             
