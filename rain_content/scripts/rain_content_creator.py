@@ -81,27 +81,6 @@ def select_optional_file(directory, label):
     except (ValueError, IndexError):
         return None
 
-import math
-import subprocess
-from pathlib import Path
-
-def format_duration(total_minutes):
-    """Converts decimal minutes into a formatted string (Hours, Minutes, Seconds)."""
-    total_seconds = int(total_minutes * 60)
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
-    
-    parts = []
-    if hours > 0: parts.append(f"{hours}h")
-    if minutes > 0: parts.append(f"{minutes}m")
-    if seconds > 0: parts.append(f"{seconds}s")
-    return " ".join(parts) if parts else "0s"
-
-import math
-import subprocess
-from pathlib import Path
-
 def format_duration(total_minutes):
     """Converts decimal minutes into a formatted string (Hours, Minutes, Seconds)."""
     total_seconds = int(total_minutes * 60)
@@ -116,7 +95,7 @@ def format_duration(total_minutes):
     return " ".join(parts) if parts else "0s"
 
 def process_long_content():
-    # 1. Paths Configuration
+    # 1. Paths & Profile Configuration
     base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
     source_dir = base_path / "rain_content" / "recorded" / "enhanced"
     asset_dir = base_path / "rain_content" / "attachments" / "long"
@@ -126,8 +105,10 @@ def process_long_content():
     
     output_dir.mkdir(parents=True, exist_ok=True)
     img_logo_path = asset_dir / "screen-logo.png"
+    # Escaping font path for Windows FFmpeg Drawtext
+    font_path = "C\\:/Windows/Fonts/arial.ttf"
     
-    # 2. File Selection (Logic assumed from existing helper utilities)
+    # 2. File Selection
     video_input = select_video_file(source_dir) 
     rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain") 
     
@@ -142,14 +123,14 @@ def process_long_content():
     print("\n--- Social CTA Ticker ---")
     default_sub = "More rain content is on the way; Subscribe so you never miss a moment of calm"
     sub_text = input(f"Enter Ticker Text [Leave blank for default]: ").strip() or default_sub
+    safe_sub_text = sub_text.replace("'", "\\'").replace(":", "\\:")
 
     while True:
         try:
             print(f"\n--- Output Duration Settings ---")
-            target_minutes = float(input("Enter EXACT final length in MINUTES (e.g., 60 or 2.5): "))
+            target_minutes = float(input("Enter EXACT final length in MINUTES: "))
             total_seconds = target_minutes * 60
             hms_str = format_duration(target_minutes)
-            print(f"🎯 Target Duration: {hms_str} ({total_seconds:.2f}s)")
             break
         except ValueError:
             print("❌ Invalid number.")
@@ -160,33 +141,31 @@ def process_long_content():
         speed_factor = float(speed_input) if speed_input else 1.0
         
         rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
+        brown_vol = 0.05 # Subtle 5% volume for the deep rumble
         sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
         music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
     except ValueError:
         speed_factor, rain_vol, sfx_vol, music_vol = 1.0, 0.75, 0.15, 0.10
 
-    # 3. Resolution
+    # 3. Resolution & Final Paths
     res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", "2k": "2560:1440", "4k": "3840:2160"}
     res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
-    # Final Output Path
     final_output = output_dir / f"Rain_Final_{hms_str.replace(' ', '_')}.mp4"
-
-    # Internal Temp Files
-    tile_file = output_dir / "temp_master_tile.mp4"
-    segment_file = output_dir / "temp_1min_segment.mp4"
+    tile_file = output_dir / "temp_tile.mp4"
+    segment_file = output_dir / "temp_segment.mp4"
     temp_no_audio = output_dir / "temp_silent_final.mp4"
     list_file = output_dir / "concat_list.txt"
 
     try:
         # --- STAGE 1: PREPARE BASE LOOP ---
+        print(f"\n[1/4] Preparing Seamless Video Loop...")
         duration, _ = get_video_info(video_input)
         adj_duration = duration * speed_factor
         fade_dur = 1.0
         loop_duration = adj_duration - fade_dur 
 
-        print(f"\n[1/4] Preparing Seamless Video Loop...")
         filter_tile = (
             f"[0:v]setpts={speed_factor}*PTS,"
             f"scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
@@ -203,18 +182,16 @@ def process_long_content():
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
         # --- STAGE 2: ASSEMBLE MASTER WITH TICKER ---
-        print(f"[2/4] Assembling Silent Master with Scrolling Ticker...")
-        minutes_to_concat = math.ceil(target_minutes)
+        print(f"[2/4] Assembling Silent Master Video...")
         with open(list_file, "w") as f:
-            for _ in range(minutes_to_concat): f.write(f"file '{segment_file.name}'\n")
+            for _ in range(math.ceil(target_minutes)): f.write(f"file '{segment_file.name}'\n")
 
         scroll_speed = 100
-        text_color = "0x5cf629" 
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
             f"[v_logo]drawbox=y=ih-80:color=black@0.6:width=iw:height=60:t=fill:enable='gt(t,5)'[v_bg];"
-            f"[v_bg]drawtext=text='{sub_text}':font='Arial':fontsize=24:fontcolor={text_color}:"
+            f"[v_bg]drawtext=fontfile='{font_path}':text='{safe_sub_text}':fontsize=24:fontcolor=0x5cf629:"
             f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-62:enable='gt(t,5)':"            
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
         )
@@ -223,38 +200,54 @@ def process_long_content():
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
             "-i", str(img_logo_path),
             "-filter_complex", filter_final,
-            "-map", "[vout]", "-t", str(total_seconds + 5), # Extra buffer for final trim
+            "-map", "[vout]", "-t", str(total_seconds + 2),
             "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
         ], check=True)
 
-        # --- STAGE 3: AUDIO MIX & FINAL TRUNCATION ---
-        print(f"\n[3/4] Blending Audio & Applying Hard Cut to {hms_str}...")
+        if not temp_no_audio.exists():
+            raise FileNotFoundError("Master silent file failed to render.")
+
+        # --- STAGE 3: AUDIO MIX & PROFILE APPLICATION ---
+        print(f"\n[3/4] Blending Audio (Rain + Brown Noise + Optional) & Applying Profile...")
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
-        filter_audio = f"[1:a]volume={rain_vol}[rain];"
-        mix_labels = "[rain]"
-        mix_count = 1
+        
+        # Base Filter: Internal Brown Noise + Input Rain (Index 1)
+        filter_audio = (
+            f"anoisesrc=d={total_seconds}:c=brown:r=44100[brn_raw];"
+            f"[brn_raw]volume={brown_vol}[brn];"
+            f"[1:a]volume={rain_vol}[rain];"
+        )
+        mix_labels = "[rain][brn]"
+        inputs_for_amix = 2
+        curr_idx = 2
 
         if sfx_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-            filter_audio += f"[{mix_count + 1}:a]volume={sfx_vol}[sfx];"
+            filter_audio += f"[{curr_idx}:a]volume={sfx_vol}[sfx];"
             mix_labels += "[sfx]"
-            mix_count += 1
+            inputs_for_amix += 1
+            curr_idx += 1
 
         if music_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-            filter_audio += f"[{mix_count + 1}:a]volume={music_vol}[music];"
+            filter_audio += f"[{curr_idx}:a]volume={music_vol}[music];"
             mix_labels += "[music]"
-            mix_count += 1
+            inputs_for_amix += 1
+            curr_idx += 1
 
-        filter_audio += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0:normalize=0[a_mixed]"
+        # Combine into amix, then apply the "long" audio profile
+        filter_audio += (
+            f"{mix_labels}amix=inputs={inputs_for_amix}:duration=first:dropout_transition=0:normalize=0[a_mixed];"
+            f"[a_mixed]{AUDIO_PROFILES['long']}[final_a]"
+        )
 
         subprocess.run([
             "ffmpeg", "-y", "-i", str(temp_no_audio)
         ] + audio_inputs + [
             "-filter_complex", filter_audio,
-            "-map", "0:v", "-map", "[a_mixed]",
+            "-map", "0:v", "-map", "[final_a]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "320k",
-            "-t", str(total_seconds), # This ensures the video ends EXACTLY at the user's input
+            "-t", str(total_seconds),
             str(final_output)
         ], check=True)
 
@@ -263,7 +256,6 @@ def process_long_content():
     except Exception as e:
         print(f"\n❌ Error during processing: {e}")
     finally:
-        # Clean up intermediate files
         for temp in [tile_file, segment_file, list_file, temp_no_audio]:
             if temp.exists(): temp.unlink()
 
