@@ -273,8 +273,8 @@ def sanitize_filename(name):
 
 def process_shorts_batch():
     """
-    Produces R, C, and L shorts with composite audio (Rain + Brown Noise + SFX/Music)
-    and Matching-Pair JSON metadata files.
+    Produces R, C, and L shorts with composite audio and 
+    Matching-Pair JSON metadata files.
     """
     # --- 1. Path Configurations ---
     base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
@@ -315,12 +315,10 @@ def process_shorts_batch():
     # --- 5. Volume Allocation ---
     try:
         rain_vol = float(input("\nRain Volume % [Default 75]: ") or 75) / 100
-        # Brown Noise set to a subtle 5% for low-end "rumble" support
-        brown_vol = 0.05 
         sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
         music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
     except ValueError:
-        rain_vol, brown_vol, sfx_vol, music_vol = 0.75, 0.05, 0.15, 0.10
+        rain_vol, sfx_vol, music_vol = 0.75, 0.15, 0.10
 
     configs = {
         "Right": {"profile": "short_r", "offset": "in_w-out_w"},
@@ -332,21 +330,24 @@ def process_shorts_batch():
     short_index = 0
     for label, cfg in configs.items():
         if short_index >= len(master_metadata):
+            print(f"⚠️ Warning: No more metadata available for {label} variant.")
             break
 
         current_seo = master_metadata[short_index]
         raw_title = current_seo.get("title", "Untitled_Short")
+        
+        # APPLY MATCHING-PAIR NAMING CONVENTION
         base_name = f"{sanitize_filename(raw_title)}_{label}"
         video_output = output_dir / f"{base_name}.mp4"
         json_output = output_dir / f"{base_name}.json"
 
         print(f"\n🎬 Rendering Pair: {base_name}")
         
+        # Visual & Audio Filter Strings
         sub_start, sub_end = max(0, target_seconds - 10), target_seconds
         font_path = "C\\:/Windows/Fonts/arialbd.ttf"
         caption = raw_title.replace("'", "\\'").replace(":", "\\:")
 
-        # --- Visual Filter ---
         filter_v = (
             f"[0:v]scale=-1:{t_h},crop={t_w}:{t_h}:{cfg['offset']}:0,setsar=1,"
             f"drawtext=fontfile='{font_path}':text='{caption}':fontcolor=white:fontsize=90:"
@@ -357,27 +358,20 @@ def process_shorts_batch():
             f"[v_logo][sub_scaled]overlay=0:0:enable='between(t,{sub_start},{sub_end})'[v]"
         )
 
-        # --- Audio Filter (Brown Noise Integrated) ---
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
-        
-        # 1. Generate brown noise and set volumes for Rain + Brown
-        filter_a = (
-            f"anoisesrc=d={target_seconds}:c=brown:r=44100[brn_raw];"
-            f"[brn_raw]volume={brown_vol}[brn];"
-            f"[3:a]volume={rain_vol}[rain];"
-        )
-        mix_labels = "[rain][brn]"
-        mix_count = 2 # Starting count is 2 (Rain + Brown Noise)
+        filter_a = f"[3:a]volume={rain_vol}[rain];"
+        mix_labels = "[rain]"
+        mix_count = 1
 
         if sfx_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-            filter_a += f"[{3 + (mix_count-1)}:a]volume={sfx_vol}[sfx];"
+            filter_a += f"[{3 + mix_count}:a]volume={sfx_vol}[sfx];"
             mix_labels += "[sfx]"
             mix_count += 1
         
         if music_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-            filter_a += f"[{3 + (mix_count-1)}:a]volume={music_vol}[music];"
+            filter_a += f"[{3 + mix_count}:a]volume={music_vol}[music];"
             mix_labels += "[music]"
             mix_count += 1
 
@@ -397,10 +391,11 @@ def process_shorts_batch():
                 "-c:a", "aac", "-b:a", "192k", str(video_output)
             ], check=True)
 
+            # SAVE MATCHING JSON FILE
             with open(json_output, 'w', encoding='utf-8') as jf:
                 json.dump(current_seo, jf, indent=2)
             
-            print(f"✅ Created: {video_output.name}")
+            print(f"✅ Created: {video_output.name} + {json_output.name}")
             short_index += 1
 
         except subprocess.CalledProcessError:
