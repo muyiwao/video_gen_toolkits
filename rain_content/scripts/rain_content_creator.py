@@ -60,27 +60,6 @@ AUDIO_PROFILES = {
 }
 
 # --- PROCESSING MODULES ---
-
-def select_optional_file(directory, label):
-    """Helper to let user pick a file or skip it."""
-    files = list(directory.glob("*.mp3")) + list(directory.glob("*.wav"))
-    if not files:
-        print(f"No files found in {directory}. Skipping {label}.")
-        return None
-    
-    print(f"\n--- {label} Selection ---")
-    print("0: Skip this sound")
-    for i, f in enumerate(files, 1):
-        print(f"{i}: {f.name}")
-    
-    choice = input(f"Select {label} (0-{len(files)}): ").strip()
-    if choice == "0" or not choice:
-        return None
-    try:
-        return files[int(choice) - 1]
-    except (ValueError, IndexError):
-        return None
-
 def format_duration(total_minutes):
     """Converts decimal minutes into a formatted string (Hours, Minutes, Seconds)."""
     total_seconds = int(total_minutes * 60)
@@ -94,6 +73,31 @@ def format_duration(total_minutes):
     if seconds > 0: parts.append(f"{seconds}s")
     return " ".join(parts) if parts else "0s"
 
+def select_optional_file(directory, label):
+    """Helper to let user pick a file or skip it."""
+    # Ensure directory exists to avoid crash
+    if not directory.exists():
+        print(f"Directory {directory} not found. Skipping {label}.")
+        return None
+        
+    files = list(directory.glob("*.mp3")) + list(directory.glob("*.wav"))
+    if not files:
+        print(f"No files found in {directory}. Skipping {label}.")
+        return None
+    
+    print(f"\n--- {label} Selection ---")
+    print("0: Skip this sound (Retain original if applicable)")
+    for i, f in enumerate(files, 1):
+        print(f"{i}: {f.name}")
+    
+    choice = input(f"Select {label} (0-{len(files)}): ").strip()
+    if choice == "0" or not choice:
+        return None
+    try:
+        return files[int(choice) - 1]
+    except (ValueError, IndexError):
+        return None
+
 def process_long_content():
     # 1. Paths & Profile Configuration
     base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
@@ -102,18 +106,19 @@ def process_long_content():
     output_dir = base_path / "output" / "output_long"
     sfx_pool = base_path / "input" / "audio_pools" / "sfx"
     music_pool = base_path / "input" / "audio_pools" / "music"
+    rain_pool = base_path / "input" / "audio_pools" / "rain"
     
     output_dir.mkdir(parents=True, exist_ok=True)
     img_logo_path = asset_dir / "screen-logo.png"
-    # Escaping font path for Windows FFmpeg Drawtext
     font_path = "C\\:/Windows/Fonts/arial.ttf"
     
     # 2. File Selection
     video_input = select_video_file(source_dir) 
-    rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain") 
+    # REFACTORED: Rain is now optional to allow retaining original sound
+    rain_input = select_optional_file(rain_pool, "Primary Rain") 
     
-    if not video_input or not rain_input: 
-        print("❌ Required video or rain files missing.")
+    if not video_input: 
+        print("❌ Required video file missing.")
         return
 
     sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
@@ -135,27 +140,22 @@ def process_long_content():
         except ValueError:
             print("❌ Invalid number.")
 
-    # --- Rain Speed & Volume ---
+    # --- Speed Factor ---
     try:
         speed_input = input("\nEnter Speed Factor [Default 1.0]: ").strip()
         speed_factor = float(speed_input) if speed_input else 1.0
-        
-        rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
-        brown_vol = 0.05 # Subtle 5% volume for the deep rumble
-        sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
-        music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
     except ValueError:
-        speed_factor, rain_vol, sfx_vol, music_vol = 1.0, 0.75, 0.15, 0.10
+        speed_factor = 1.0
 
     # 3. Resolution & Final Paths
     res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", "2k": "2560:1440", "4k": "3840:2160"}
     res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
-    final_output = output_dir / f"Rain_Final_{hms_str.replace(' ', '_')}.mp4"
+    final_output = output_dir / f"Final_{hms_str.replace(' ', '_')}.mp4"
     tile_file = output_dir / "temp_tile.mp4"
     segment_file = output_dir / "temp_segment.mp4"
-    temp_no_audio = output_dir / "temp_silent_final.mp4"
+    temp_no_audio = output_dir / "temp_master_vid.mp4"
     list_file = output_dir / "concat_list.txt"
 
     try:
@@ -174,7 +174,8 @@ def process_long_content():
             f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={fade_dur}:alpha=1[alpha_fade];"
             f"[base][alpha_fade]overlay=x=0:y=0:shortest=1[v]"
         )
-        subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
+        # We keep audio in the tile_file in case we need it later
+        subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
 
         tiles_in_one_min = math.ceil(60 / loop_duration)
         with open(list_file, "w") as f:
@@ -182,7 +183,7 @@ def process_long_content():
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
         # --- STAGE 2: ASSEMBLE MASTER WITH TICKER ---
-        print(f"[2/4] Assembling Silent Master Video...")
+        print(f"[2/4] Assembling Master Video...")
         with open(list_file, "w") as f:
             for _ in range(math.ceil(target_minutes)): f.write(f"file '{segment_file.name}'\n")
 
@@ -196,60 +197,71 @@ def process_long_content():
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
         )
 
+        # Assemble video and keep original audio stream if it exists
         subprocess.run([
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
             "-i", str(img_logo_path),
             "-filter_complex", filter_final,
-            "-map", "[vout]", "-t", str(total_seconds + 2),
-            "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
+            "-map", "[vout]", "-map", "0:a?", "-t", str(total_seconds + 2),
+            "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", "-c:a", "copy", str(temp_no_audio)
         ], check=True)
 
-        if not temp_no_audio.exists():
-            raise FileNotFoundError("Master silent file failed to render.")
-
-        # --- STAGE 3: AUDIO MIX & PROFILE APPLICATION ---
-        print(f"\n[3/4] Blending Audio (Rain + Brown Noise + Optional) & Applying Profile...")
-        audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
+        # --- STAGE 3: AUDIO MIX OR RETAIN ORIGINAL ---
+        print(f"\n[3/4] Processing Audio...")
         
-        # Base Filter: Internal Brown Noise + Input Rain (Index 1)
-        filter_audio = (
-            f"anoisesrc=d={total_seconds}:c=brown:r=44100[brn_raw];"
-            f"[brn_raw]volume={brown_vol}[brn];"
-            f"[1:a]volume={rain_vol}[rain];"
-        )
-        mix_labels = "[rain][brn]"
-        inputs_for_amix = 2
-        curr_idx = 2
+        # Check if any external audio is selected
+        has_ext_audio = any([rain_input, sfx_input, music_input])
 
-        if sfx_input:
-            audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-            filter_audio += f"[{curr_idx}:a]volume={sfx_vol}[sfx];"
-            mix_labels += "[sfx]"
-            inputs_for_amix += 1
-            curr_idx += 1
+        if not has_ext_audio:
+            print("💡 No external audio selected. Retaining original video sound.")
+            subprocess.run([
+                "ffmpeg", "-y", "-i", str(temp_no_audio),
+                "-t", str(total_seconds), "-c", "copy", str(final_output)
+            ], check=True)
+        else:
+            # Gather volumes for selected items
+            rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100 if rain_input else 0
+            sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0
+            music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0
+            brown_vol = 0.05
 
-        if music_input:
-            audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-            filter_audio += f"[{curr_idx}:a]volume={music_vol}[music];"
-            mix_labels += "[music]"
-            inputs_for_amix += 1
-            curr_idx += 1
+            audio_inputs = []
+            filter_audio = f"anoisesrc=d={total_seconds}:c=brown:r=44100[brn_raw]; [brn_raw]volume={brown_vol}[brn];"
+            mix_labels = "[brn]"
+            inputs_for_amix = 1
+            curr_idx = 1 # temp_no_audio is 0
 
-        # Combine into amix, then apply the "long" audio profile
-        filter_audio += (
-            f"{mix_labels}amix=inputs={inputs_for_amix}:duration=first:dropout_transition=0:normalize=0[a_mixed];"
-            f"[a_mixed]{AUDIO_PROFILES['long']}[final_a]"
-        )
+            if rain_input:
+                audio_inputs += ["-stream_loop", "-1", "-i", str(rain_input)]
+                filter_audio += f"[{curr_idx}:a]volume={rain_vol}[rain];"
+                mix_labels += "[rain]"
+                inputs_for_amix += 1
+                curr_idx += 1
+            
+            if sfx_input:
+                audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
+                filter_audio += f"[{curr_idx}:a]volume={sfx_vol}[sfx];"
+                mix_labels += "[sfx]"
+                inputs_for_amix += 1
+                curr_idx += 1
 
-        subprocess.run([
-            "ffmpeg", "-y", "-i", str(temp_no_audio)
-        ] + audio_inputs + [
-            "-filter_complex", filter_audio,
-            "-map", "0:v", "-map", "[final_a]",
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "320k",
-            "-t", str(total_seconds),
-            str(final_output)
-        ], check=True)
+            if music_input:
+                audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
+                filter_audio += f"[{curr_idx}:a]volume={music_vol}[music];"
+                mix_labels += "[music]"
+                inputs_for_amix += 1
+                curr_idx += 1
+
+            filter_audio += f"{mix_labels}amix=inputs={inputs_for_amix}:duration=first:dropout_transition=0:normalize=0[a_mixed]; [a_mixed]{AUDIO_PROFILES['long']}[final_a]"
+
+            subprocess.run([
+                "ffmpeg", "-y", "-i", str(temp_no_audio)
+            ] + audio_inputs + [
+                "-filter_complex", filter_audio,
+                "-map", "0:v", "-map", "[final_a]",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "320k",
+                "-t", str(total_seconds), str(final_output)
+            ], check=True)
 
         print(f"\n✅ SUCCESS! {hms_str} video created: {final_output.name}")
 
