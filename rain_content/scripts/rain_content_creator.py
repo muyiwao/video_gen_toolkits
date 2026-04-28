@@ -93,117 +93,127 @@ def select_optional_file(directory, label):
     except (ValueError, IndexError):
         return None
 
+import math
+import subprocess
+from pathlib import Path
+
+def format_duration(total_minutes):
+    """Converts decimal minutes into a formatted string (Hours, Minutes, Seconds)."""
+    total_seconds = int(total_minutes * 60)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    
+    parts = []
+    if hours > 0: parts.append(f"{hours}h")
+    if minutes > 0: parts.append(f"{minutes}m")
+    if seconds > 0: parts.append(f"{seconds}s")
+    return " ".join(parts) if parts else "0s"
+
 def process_long_content():
-    # 1. Paths & Profile Configuration
+    # 1. Paths Configuration
     base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
     source_dir = base_path / "rain_content" / "recorded" / "enhanced"
     asset_dir = base_path / "rain_content" / "attachments" / "long"
     output_dir = base_path / "output" / "output_long"
     sfx_pool = base_path / "input" / "audio_pools" / "sfx"
     music_pool = base_path / "input" / "audio_pools" / "music"
-
+    
     output_dir.mkdir(parents=True, exist_ok=True)
     img_logo_path = asset_dir / "screen-logo.png"
-    font_path = "C\\:/Windows/Fonts/arial.ttf"
-
-    # 2. File Selection
-    video_input = select_video_file(source_dir)
-    rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain")
-
-    if not video_input or not rain_input:
-        print("❌ Required video or rain files missing.")
-        return
+    
+    # 2. SELECTION (Assuming helper functions select_video_file, etc. are defined)
+    video_input = select_video_file(source_dir) 
+    rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain") 
+    
+    if not video_input or not rain_input: return
 
     sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
     music_input = select_optional_file(music_pool, "Tertiary Music")
 
-    # --- Runtime Inputs ---
+    # --- Runtime Caption Input ---
     print("\n--- Social CTA Ticker ---")
     default_sub = "More rain content is on the way; Subscribe so you never miss a moment of calm"
     sub_text = input(f"Enter Ticker Text [Leave blank for default]: ").strip() or default_sub
-    safe_sub_text = sub_text.replace("'", "\\'").replace(":", "\\:")
 
-    while True:
-        try:
-            print(f"\n--- Output Duration Settings ---")
-            target_minutes = float(input("Enter EXACT final length in MINUTES: "))
-            total_seconds = target_minutes * 60
-            hms_str = format_duration(target_minutes)
-            break
-        except ValueError:
-            print("❌ Invalid number.")
-
+    # --- Rain Speed Adjustment ---
+    print("\n--- Rain Speed Adjustment ---")
     try:
-        speed_input = input("\nEnter Speed Factor [Default 1.0]: ").strip()
+        speed_input = input("Enter Speed Factor [Default 1.0]: ").strip()
         speed_factor = float(speed_input) if speed_input else 1.0
+    except ValueError:
+        speed_factor = 1.0
+
+    # --- Volume Allocation ---
+    print("\n--- Volume Allocation ---")
+    try:
         rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
-        brown_vol = 0.05
         sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
         music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
     except ValueError:
-        speed_factor, rain_vol, sfx_vol, music_vol = 1.0, 0.75, 0.15, 0.10
+        rain_vol, sfx_vol, music_vol = 0.75, 0.15, 0.10
 
-    # 3. Resolution & Final Paths
+    # 3. Resolution
     res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", "2k": "2560:1440", "4k": "3840:2160"}
     res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
-    final_output = output_dir / f"Rain_Final_{hms_str.replace(' ', '_')}.mp4"
-    tile_file = output_dir / "temp_tile.mp4"
-    segment_file = output_dir / "temp_segment.mp4"
+    # --- DURATION PREDICTION & CONVERSION ---
+    duration, _ = get_video_info(video_input)
+    adj_duration = duration * speed_factor
+    fade_dur = 1.0
+    loop_duration = adj_duration - fade_dur 
+
+    while True:
+        try:
+            print(f"\n--- Duration Setup ---")
+            target_minutes = float(input("Enter DESIRED final length in DECIMAL MINUTES (2Min yield 1Min): "))
+            target_seconds = int(target_minutes * 60)
+            formatted_time = format_duration(target_minutes)
+            print(f"🕒 Rendering precisely: {formatted_time} ({target_seconds} seconds)")
+            break
+        except ValueError:
+            print("❌ Invalid number.")
+
+    # File Paths (Using formatted time for the final filename)
+    tile_file = output_dir / "temp_master_tile.mp4"
+    segment_file = output_dir / "temp_1min_segment.mp4"
     temp_no_audio = output_dir / "temp_silent_final.mp4"
     list_file = output_dir / "concat_list.txt"
+    final_output = output_dir / f"Rain_Video_{formatted_time.replace(' ', '_')}.mp4"
+
+    text_color = "0x5cf629" 
 
     try:
-        # --- STAGE 1: PREPARE BASE LOOP (Dynamic Adjustment) ---
-        print(f"\n[1/4] Preparing Stabilized Seamless Video Loop...")
-        duration, _ = get_video_info(video_input)
-        
-        # Calculate dynamic duration based on speed
-        real_duration = duration * speed_factor
-        
-        # Dynamic Fade: Use 10% of video length or max 2s, whichever is smaller
-        fade_dur = min(2.0, real_duration * 0.1)
-        offset = real_duration - fade_dur
-
-        # Refined Filter: Force 30fps and exact PTS to prevent vibration
+        # --- STAGE 1: PREPARE BASE LOOP ---
+        print(f"\n[1/4] Preparing Video Loop...")
         filter_tile = (
-            f"[0:v]setpts={speed_factor}*PTS,fps=30,scale={target_res}:force_original_aspect_ratio=increase,"
-            f"crop={target_res},setsar=1,format=yuv420p,setpts=N/(30*TB)[v_norm];"
-            f"[v_norm]split[v1][v2];"
-            f"[v1][v2]xfade=transition=fade:duration={fade_dur}:offset={offset},setpts=N/(30*TB)[v]"
+            f"[0:v]setpts={speed_factor}*PTS,"
+            f"scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
+            f"[over]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[fadein];"
+            f"[main]trim=start={fade_dur},setpts=PTS-STARTPTS[base];"
+            f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={fade_dur}:alpha=1[alpha_fade];"
+            f"[base][alpha_fade]overlay=x=0:y=0:shortest=1[v]"
         )
+        subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
 
-        subprocess.run([
-            "ffmpeg", "-y", "-vsync", "cfr", "-i", str(video_input), 
-            "-filter_complex", filter_tile, "-map", "[v]", 
-            "-c:v", "libx264", "-crf", "17", "-preset", "slow", "-r", "30",
-            "-t", str(offset), str(tile_file)
-        ], check=True)
-
-        # Create 1-minute segment using concat with genpts flag
-        tiles_in_one_min = math.ceil(60 / offset)
+        tiles_in_one_min = math.ceil(60 / loop_duration)
         with open(list_file, "w") as f:
-            for _ in range(tiles_in_one_min):
-                f.write(f"file '{tile_file.name}'\n")
+            for _ in range(tiles_in_one_min): f.write(f"file '{tile_file.name}'\n")
+        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
-        subprocess.run([
-            "ffmpeg", "-y", "-fflags", "+genpts", "-f", "concat", "-safe", "0", 
-            "-i", str(list_file), "-c", "copy", "-vsync", "cfr", "-r", "30", "-t", "60", str(segment_file)
-        ], check=True)
-
-        # --- STAGE 2: ASSEMBLE MASTER ---
-        print(f"[2/4] Assembling Silent Master Video with Ticker...")
+        # --- STAGE 2: ASSEMBLE MASTER WITH FULL-WIDTH TICKER ---
+        print(f"[2/4] Assembling {formatted_time} Silent Master with Ticker...")
+        minutes_to_concat = math.ceil(target_minutes)
         with open(list_file, "w") as f:
-            for _ in range(math.ceil(target_minutes)):
-                f.write(f"file '{segment_file.name}'\n")
+            for _ in range(minutes_to_concat): f.write(f"file '{segment_file.name}'\n")
 
         scroll_speed = 100
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
             f"[v_logo]drawbox=y=ih-80:color=black@0.6:width=iw:height=60:t=fill:enable='gt(t,5)'[v_bg];"
-            f"[v_bg]drawtext=fontfile='{font_path}':text='{safe_sub_text}':fontsize=24:fontcolor=0x5cf629:"
+            f"[v_bg]drawtext=text='{sub_text}':font='Arial':fontsize=24:fontcolor={text_color}:"
             f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-62:enable='gt(t,5)':"            
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
         )
@@ -212,60 +222,48 @@ def process_long_content():
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
             "-i", str(img_logo_path),
             "-filter_complex", filter_final,
-            "-map", "[vout]", "-t", str(total_seconds),
+            "-map", "[vout]", "-t", str(target_seconds),
             "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
         ], check=True)
 
         # --- STAGE 3: AUDIO MIX ---
-        print(f"\n[3/4] Blending Multi-Layer Audio & Applying Profile...")
+        # (Audio mixing logic remains largely the same but mapped to final_output)
+        print(f"\n[3/4] Blending Audio Tracks...")
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
-
-        filter_audio = (
-            f"anoisesrc=d={total_seconds}:c=brown:r=44100[brn_raw];"
-            f"[brn_raw]volume={brown_vol}[brn];"
-            f"[1:a]volume={rain_vol}[rain];"
-        )
-        mix_labels = "[rain][brn]"
-        inputs_for_amix = 2
-        curr_idx = 2
+        filter_audio = f"[1:a]volume={rain_vol}[rain];"
+        mix_labels = "[rain]"
+        mix_count = 1
 
         if sfx_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-            filter_audio += f"[{curr_idx}:a]volume={sfx_vol}[sfx];"
+            filter_audio += f"[{mix_count + 1}:a]volume={sfx_vol}[sfx];"
             mix_labels += "[sfx]"
-            inputs_for_amix += 1
-            curr_idx += 1
+            mix_count += 1
 
         if music_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-            filter_audio += f"[{curr_idx}:a]volume={music_vol}[music];"
+            filter_audio += f"[{mix_count + 1}:a]volume={music_vol}[music];"
             mix_labels += "[music]"
-            inputs_for_amix += 1
-            curr_idx += 1
+            mix_count += 1
 
-        filter_audio += (
-            f"{mix_labels}amix=inputs={inputs_for_amix}:duration=first:dropout_transition=0:normalize=0[a_mixed];"
-            f"[a_mixed]{AUDIO_PROFILES['long']}[final_a]"
-        )
+        filter_audio += f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0:normalize=0[a_mixed]"
 
         subprocess.run([
             "ffmpeg", "-y", "-i", str(temp_no_audio)
         ] + audio_inputs + [
             "-filter_complex", filter_audio,
-            "-map", "0:v", "-map", "[final_a]",
+            "-map", "0:v", "-map", "[a_mixed]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "320k",
-            "-t", str(total_seconds),
-            str(final_output)
+            "-shortest", str(final_output)
         ], check=True)
 
-        print(f"\n✅ SUCCESS! {hms_str} video created: {final_output.name}")
+        print(f"\n✅ SUCCESS! {formatted_time} video created: {final_output.name}")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
     finally:
         for temp in [tile_file, segment_file, list_file, temp_no_audio]:
-            if temp.exists():
-                temp.unlink()
+            if temp.exists(): temp.unlink()
 
 def sanitize_filename(name):
     """Removes illegal characters and replaces spaces with underscores."""
