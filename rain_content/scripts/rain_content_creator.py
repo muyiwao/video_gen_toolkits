@@ -267,7 +267,7 @@ def sanitize_filename(name):
 def process_shorts_batch():
     """
     Produces R, C, and L shorts with composite audio (Rain + Brown Noise + SFX/Music)
-    and Matching-Pair JSON metadata files.
+    and Matching-Pair JSON metadata files with Master Volume Control.
     """
     # --- 1. Path Configurations ---
     base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
@@ -305,15 +305,19 @@ def process_shorts_batch():
     target_res = res_map.get(res_choice, "1080:1920")
     t_w, t_h = map(int, target_res.split(':'))
 
-    # --- 5. Volume Allocation ---
+    # --- 5. NEW: Volume & Master Gain Allocation ---
     try:
-        rain_vol = float(input("\nRain Volume % [Default 75]: ") or 75) / 100
-        # Brown Noise set to a subtle 5% for low-end "rumble" support
+        print("\n--- Audio Balancing ---")
+        # Global multiplier for the final mix
+        master_vol_pct = float(input("Master Output Volume % (e.g., 80, 100, 120) [Default 100]: ") or 100)
+        master_gain = master_vol_pct / 100
+
+        rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
         brown_vol = 0.05 
         sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
         music_vol = float(input("Music Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
     except ValueError:
-        rain_vol, brown_vol, sfx_vol, music_vol = 0.75, 0.05, 0.15, 0.10
+        master_gain, rain_vol, brown_vol, sfx_vol, music_vol = 1.0, 0.75, 0.05, 0.15, 0.10
 
     configs = {
         "Right": {"profile": "short_r", "offset": "in_w-out_w"},
@@ -333,13 +337,13 @@ def process_shorts_batch():
         video_output = output_dir / f"{base_name}.mp4"
         json_output = output_dir / f"{base_name}.json"
 
-        print(f"\n🎬 Rendering Pair: {base_name}")
+        print(f"\n🎬 Rendering Pair: {base_name} | Master Vol: {int(master_gain*100)}%")
         
         sub_start, sub_end = max(0, target_seconds - 10), target_seconds
         font_path = "C\\:/Windows/Fonts/arialbd.ttf"
         caption = raw_title.replace("'", "\\'").replace(":", "\\:")
 
-        # --- Visual Filter ---
+        # Visual Filter
         filter_v = (
             f"[0:v]scale=-1:{t_h},crop={t_w}:{t_h}:{cfg['offset']}:0,setsar=1,"
             f"drawtext=fontfile='{font_path}':text='{caption}':fontcolor=white:fontsize=90:"
@@ -350,17 +354,16 @@ def process_shorts_batch():
             f"[v_logo][sub_scaled]overlay=0:0:enable='between(t,{sub_start},{sub_end})'[v]"
         )
 
-        # --- Audio Filter (Brown Noise Integrated) ---
+        # Audio Filter (Now with Master Gain Stage)
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
         
-        # 1. Generate brown noise and set volumes for Rain + Brown
         filter_a = (
             f"anoisesrc=d={target_seconds}:c=brown:r=44100[brn_raw];"
             f"[brn_raw]volume={brown_vol}[brn];"
             f"[3:a]volume={rain_vol}[rain];"
         )
         mix_labels = "[rain][brn]"
-        mix_count = 2 # Starting count is 2 (Rain + Brown Noise)
+        mix_count = 2 
 
         if sfx_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
@@ -374,8 +377,12 @@ def process_shorts_batch():
             mix_labels += "[music]"
             mix_count += 1
 
-        filter_a += f"{mix_labels}amix=inputs={mix_count}:duration=first[a_mixed];"
-        filter_a += f"[a_mixed]{AUDIO_PROFILES[cfg['profile']]}[final_a]"
+        # Combine layers, then apply the master_gain multiplier, then apply profile
+        filter_a += (
+            f"{mix_labels}amix=inputs={mix_count}:duration=first:normalize=0[a_mixed];"
+            f"[a_mixed]volume={master_gain}[a_mastered];"
+            f"[a_mastered]{AUDIO_PROFILES[cfg['profile']]}[final_a]"
+        )
 
         try:
             subprocess.run([
