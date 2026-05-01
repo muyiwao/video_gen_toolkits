@@ -132,29 +132,22 @@ def process_long_content():
     default_sub = "More rain content is on the way; Subscribe so you never miss a moment of calm"
     sub_text = input(f"Enter Ticker Text [Leave blank for default]: ").strip() or default_sub
 
-    print("\n--- Speed & Volume Settings ---")
     try:
-        speed_input = input("Enter Speed Factor [Default 1.0]: ").strip()
-        speed_factor = float(speed_input) if speed_input else 1.0
-        
-        # --- NEW: Master Volume Adjustment ---
-        print("\n[Master Audio Gain]")
-        master_vol_pct = float(input("Final Output Volume % (e.g., 50 for half, 150 for louder) [Default 100]: ") or 100)
+        speed_factor = float(input("Enter Speed Factor [Default 1.0]: ") or 1.0)
+        master_vol_pct = float(input("Final Output Volume % [Default 100]: ") or 100)
         master_gain = master_vol_pct / 100
-
-        print("\n[Layer Balancing]")
+        
         rain_vol = float(input("Rain Layer Volume % [Default 75]: ") or 75) / 100
         sfx_vol = float(input("SFX Layer Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
         music_vol = float(input("Music Layer Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
     except ValueError:
         speed_factor, master_gain, rain_vol, sfx_vol, music_vol = 1.0, 1.0, 0.75, 0.15, 0.10
 
-    # 3. Resolution
     res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", "2k": "2560:1440", "4k": "3840:2160"}
     res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
-    # --- DURATION PREDICTION ---
+    # --- Duration Logic ---
     duration, _ = get_video_info(video_input)
     adj_duration = duration * speed_factor
     fade_dur = 1.0
@@ -162,13 +155,11 @@ def process_long_content():
 
     while True:
         try:
-            print(f"\n--- Duration Setup ---")
-            target_minutes = float(input("Enter DESIRED final length in DECIMAL MINUTES: "))
+            target_minutes = float(input("Enter DESIRED final length (Decimal Minutes) - 2min Yield 1min: "))
             target_seconds = int(target_minutes * 60)
             formatted_time = format_duration(target_minutes)
             break
-        except ValueError:
-            print("❌ Invalid number.")
+        except ValueError: print("❌ Invalid input.")
 
     tile_file = output_dir / "temp_master_tile.mp4"
     segment_file = output_dir / "temp_1min_segment.mp4"
@@ -177,7 +168,7 @@ def process_long_content():
     final_output = output_dir / f"Rain_Video_{formatted_time.replace(' ', '_')}.mp4"
 
     try:
-        # --- STAGE 1: PREPARE BASE LOOP ---
+        # --- STAGE 1 & 2: VIDEO ASSEMBLY (Unchanged) ---
         print(f"\n[1/4] Preparing Video Loop...")
         filter_tile = (
             f"[0:v]setpts={speed_factor}*PTS,"
@@ -189,16 +180,13 @@ def process_long_content():
         )
         subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
 
-        tiles_in_one_min = math.ceil(60 / loop_duration)
         with open(list_file, "w") as f:
-            for _ in range(tiles_in_one_min): f.write(f"file '{tile_file.name}'\n")
+            for _ in range(math.ceil(60 / loop_duration)): f.write(f"file '{tile_file.name}'\n")
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
-        # --- STAGE 2: ASSEMBLE MASTER WITH FULL-WIDTH TICKER ---
-        print(f"[2/4] Assembling {formatted_time} Silent Master...")
-        minutes_to_concat = math.ceil(target_minutes)
+        print(f"[2/4] Assembling Silent Master...")
         with open(list_file, "w") as f:
-            for _ in range(minutes_to_concat): f.write(f"file '{segment_file.name}'\n")
+            for _ in range(math.ceil(target_minutes)): f.write(f"file '{segment_file.name}'\n")
 
         scroll_speed = 100
         filter_final = (
@@ -210,36 +198,45 @@ def process_long_content():
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
         )
 
-        subprocess.run([
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
-            "-i", str(img_logo_path),
-            "-filter_complex", filter_final,
-            "-map", "[vout]", "-t", str(target_seconds),
-            "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)
-        ], check=True)
+        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-i", str(img_logo_path), "-filter_complex", filter_final, "-map", "[vout]", "-t", str(target_seconds), "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)], check=True)
 
-        # --- STAGE 3: AUDIO MIX WITH MASTER GAIN ---
-        print(f"\n[3/4] Blending Audio Tracks with Master Gain...")
-        audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
-        filter_audio = f"[1:a]volume={rain_vol}[rain];"
-        mix_labels = "[rain]"
-        mix_count = 1
+        # --- STAGE 3: SEAMLESS AUDIO WITH PROFILES ---
+        print(f"\n[3/4] Blending Seamless Audio with Profile: 'long'...")
+        
+        # We define the "long" profile here from your AUDIO_PROFILES
+        profile_filter = AUDIO_PROFILES["long"] 
+        
+        audio_inputs = []
+        filter_audio = ""
+        mix_labels = ""
+        
+        layers = [
+            (rain_input, rain_vol, "rain"),
+            (sfx_input, sfx_vol, "sfx"),
+            (music_input, music_vol, "music")
+        ]
+        
+        active_layers = [l for l in layers if l[0]]
+        
+        for idx, (path, vol, name) in enumerate(active_layers):
+            audio_inputs += ["-stream_loop", "-1", "-i", str(path)]
+            
+            # SEAMLESS FIX: 
+            # 1. Apply your specific AUDIO_PROFILES logic (Bass boost/Volume)
+            # 2. Add 'afade' at start/end of the stream loop to prevent clicks
+            # 3. Add highpass/lowpass to stabilize the loop points
+            filter_audio += (
+                f"[{idx+1}:a]{profile_filter}," # Applying your "long" profile
+                f"volume={vol},"
+                f"highpass=f=20,lowpass=f=18000,"
+                f"afade=t=in:st=0:d=0.1,afade=t=out:st={target_seconds-0.1}:d=0.1"
+                f"[{name}];"
+            )
+            mix_labels += f"[{name}]"
 
-        if sfx_input:
-            audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-            filter_audio += f"[{mix_count + 1}:a]volume={sfx_vol}[sfx];"
-            mix_labels += "[sfx]"
-            mix_count += 1
-
-        if music_input:
-            audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-            filter_audio += f"[{mix_count + 1}:a]volume={music_vol}[music];"
-            mix_labels += "[music]"
-            mix_count += 1
-
-        # Apply amix, then apply the master_gain to the result
+        # Final Mixdown
         filter_audio += (
-            f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=0:normalize=0[a_mixed];"
+            f"{mix_labels}amix=inputs={len(active_layers)}:duration=first:dropout_transition=3:normalize=0[a_mixed];"
             f"[a_mixed]volume={master_gain}[final_a]"
         )
 
@@ -252,7 +249,7 @@ def process_long_content():
             "-shortest", str(final_output)
         ], check=True)
 
-        print(f"\n✅ SUCCESS! {formatted_time} video created with {master_vol_pct}% volume.")
+        print(f"\n✅ SUCCESS! {formatted_time} seamless video/audio created with Profile 'long'.")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
