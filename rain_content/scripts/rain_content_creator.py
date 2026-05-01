@@ -411,7 +411,7 @@ def process_shorts_batch():
 
 if __name__ == "__main__":
     print("--- CONTENT GENERATION TOOLKIT (FFMPEG NATIVE AUDIO) ---")
-    print("1. Long | 2. Shorts Batch | 3. Live")
+    print("1. Long | 2. Shorts Batch")
     choice = input("\nChoice: ").strip()
     if choice == '1':
         process_long_content()
@@ -425,5 +425,3 @@ if __name__ == "__main__":
             
     elif choice == '2': 
         process_shorts_batch()
-    elif choice == '3': 
-        process_live_content()
