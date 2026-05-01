@@ -263,8 +263,8 @@ def sanitize_filename(name):
 
 def process_shorts_batch():
     """
-    Produces R, C, and L shorts with composite audio (Rain + Brown Noise + SFX/Music)
-    and Matching-Pair JSON metadata files with Master Volume Control.
+    Produces R, C, and L shorts with seamless composite audio and 
+    Matching-Pair JSON metadata files with Master Volume Control.
     """
     # --- 1. Path Configurations ---
     base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
@@ -294,7 +294,7 @@ def process_shorts_batch():
     music_input = select_optional_file(audio_base_dir / "music", "Tertiary Music")
 
     # --- 4. Duration & Resolution ---
-    dur_raw = input("\nTarget Duration (e.g., 59 or 0.5m) [Default 59s]: ").strip().lower()
+    dur_raw = input("\nTarget Duration (e.g., 59) [Default 59s]: ").strip().lower()
     target_seconds = float(dur_raw.replace('m', '')) * 60 if 'm' in dur_raw else float(dur_raw or 59)
 
     res_map = {"720p": "720:1280", "1080p": "1080:1920", "2k": "1440:2560", "4k": "2160:3840"}
@@ -302,13 +302,10 @@ def process_shorts_batch():
     target_res = res_map.get(res_choice, "1080:1920")
     t_w, t_h = map(int, target_res.split(':'))
 
-    # --- 5. NEW: Volume & Master Gain Allocation ---
+    # --- 5. Volume Balancing ---
     try:
-        print("\n--- Audio Balancing ---")
-        # Global multiplier for the final mix
-        master_vol_pct = float(input("Master Output Volume % (e.g., 80, 100, 120) [Default 100]: ") or 100)
+        master_vol_pct = float(input("Master Output Volume % [Default 100]: ") or 100)
         master_gain = master_vol_pct / 100
-
         rain_vol = float(input("Rain Volume % [Default 75]: ") or 75) / 100
         brown_vol = 0.05 
         sfx_vol = float(input("SFX Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
@@ -325,8 +322,7 @@ def process_shorts_batch():
     # --- 6. Batch Processing Loop ---
     short_index = 0
     for label, cfg in configs.items():
-        if short_index >= len(master_metadata):
-            break
+        if short_index >= len(master_metadata): break
 
         current_seo = master_metadata[short_index]
         raw_title = current_seo.get("title", "Untitled_Short")
@@ -334,13 +330,13 @@ def process_shorts_batch():
         video_output = output_dir / f"{base_name}.mp4"
         json_output = output_dir / f"{base_name}.json"
 
-        print(f"\n🎬 Rendering Pair: {base_name} | Master Vol: {int(master_gain*100)}%")
+        print(f"\n🎬 Rendering Seamless {label}: {base_name}")
         
         sub_start, sub_end = max(0, target_seconds - 10), target_seconds
         font_path = "C\\:/Windows/Fonts/arialbd.ttf"
         caption = raw_title.replace("'", "\\'").replace(":", "\\:")
 
-        # Visual Filter
+        # Visual Filter (Stays standard)
         filter_v = (
             f"[0:v]scale=-1:{t_h},crop={t_w}:{t_h}:{cfg['offset']}:0,setsar=1,"
             f"drawtext=fontfile='{font_path}':text='{caption}':fontcolor=white:fontsize=90:"
@@ -351,32 +347,41 @@ def process_shorts_batch():
             f"[v_logo][sub_scaled]overlay=0:0:enable='between(t,{sub_start},{sub_end})'[v]"
         )
 
-        # Audio Filter (Now with Master Gain Stage)
+        # SEAMLESS AUDIO LOGIC:
+        # 1. Use highpass/lowpass to remove frequency 'snaps' at loop points.
+        # 2. Use tiny afade to smooth the junction.
         audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
         
+        # Audio Base (Rain + Brown Noise)
         filter_a = (
-            f"anoisesrc=d={target_seconds}:c=brown:r=44100[brn_raw];"
-            f"[brn_raw]volume={brown_vol}[brn];"
-            f"[3:a]volume={rain_vol}[rain];"
+            f"anoisesrc=d={target_seconds}:c=brown:r=44100,volume={brown_vol}[brn];"
+            f"[3:a]volume={rain_vol},highpass=f=20,lowpass=f=18000,"
+            f"afade=t=in:st=0:d=0.1,afade=t=out:st={target_seconds-0.1}:d=0.1[rain];"
         )
         mix_labels = "[rain][brn]"
         mix_count = 2 
 
         if sfx_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-            filter_a += f"[{3 + (mix_count-1)}:a]volume={sfx_vol}[sfx];"
+            filter_a += (
+                f"[{3 + (mix_count-1)}:a]volume={sfx_vol},highpass=f=20,"
+                f"afade=t=in:st=0:d=0.1,afade=t=out:st={target_seconds-0.1}:d=0.1[sfx];"
+            )
             mix_labels += "[sfx]"
             mix_count += 1
         
         if music_input:
             audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-            filter_a += f"[{3 + (mix_count-1)}:a]volume={music_vol}[music];"
+            filter_a += (
+                f"[{3 + (mix_count-1)}:a]volume={music_vol},highpass=f=20,"
+                f"afade=t=in:st=0:d=0.1,afade=t=out:st={target_seconds-0.1}:d=0.1[music];"
+            )
             mix_labels += "[music]"
             mix_count += 1
 
-        # Combine layers, then apply the master_gain multiplier, then apply profile
+        # FINAL CHAIN: Mix -> Master Volume -> Apply Specific Audio Profile
         filter_a += (
-            f"{mix_labels}amix=inputs={mix_count}:duration=first:normalize=0[a_mixed];"
+            f"{mix_labels}amix=inputs={mix_count}:duration=first:dropout_transition=2:normalize=0[a_mixed];"
             f"[a_mixed]volume={master_gain}[a_mastered];"
             f"[a_mastered]{AUDIO_PROFILES[cfg['profile']]}[final_a]"
         )
@@ -384,8 +389,8 @@ def process_shorts_batch():
         try:
             subprocess.run([
                 "ffmpeg", "-y", "-stream_loop", "-1", "-i", str(video_input),
-                "-i", str(base_path / "rain_content/attachments/shorts/logo-cta.png"),
-                "-i", str(base_path / "rain_content/attachments/shorts/subscribe-cta.png")
+                "-i", str(asset_dir / "logo-cta.png"),
+                "-i", str(asset_dir / "subscribe-cta.png")
             ] + audio_inputs + [
                 "-filter_complex", f"{filter_v};{filter_a}",
                 "-map", "[v]", "-map", "[final_a]",
@@ -397,14 +402,14 @@ def process_shorts_batch():
             with open(json_output, 'w', encoding='utf-8') as jf:
                 json.dump(current_seo, jf, indent=2)
             
-            print(f"✅ Created: {video_output.name}")
             short_index += 1
+            print(f"✅ Success: {video_output.name}")
 
         except subprocess.CalledProcessError:
             print(f"❌ FFmpeg failed on {label} variant.")
             continue
 
-    print(f"\n✨ Batch complete. All pairs saved to: {output_dir}")
+    print(f"\n✨ Batch complete. Results in: {output_dir}")
 
 if __name__ == "__main__":
     print("--- CONTENT GENERATION TOOLKIT (FFMPEG NATIVE AUDIO) ---")
