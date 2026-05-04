@@ -26,8 +26,8 @@ def harvest_search_seo_data():
     """Extracts SEO metadata with strict date, subscriber, and view filters."""
     print("\n--- YouTube Underdog SEO Harvester ---")
     
-    input_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input\text_files")
-    output_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\yt_utils\yt_dls")
+    input_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input\text_files")
+    output_base_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\yt_utils\yt_dls")
     
     selected_file = select_input_file(input_dir)
     if not selected_file:

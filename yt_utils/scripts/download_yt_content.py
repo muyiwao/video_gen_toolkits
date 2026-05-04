@@ -32,7 +32,7 @@ def download_youtube_content():
             end_ts = input("   Enter End Timestamp (e.g., 00:05:46): ").strip()
 
     # Define Download Path
-    download_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\yt_utils\yt_dls")
+    download_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\yt_utils\yt_dls")
     download_path.mkdir(parents=True, exist_ok=True)
 
     # Base options

@@ -56,7 +56,7 @@ def extract_last_frame(mp4_path: Path) -> Path:
 
 def main():
     # Paths are identical for source and destination as requested
-    working_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input\video_pools")
+    working_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input\video_pools")
 
     if not working_dir.exists() or not working_dir.is_dir():
         print(f"Error: The path {working_dir} is not a valid directory.")

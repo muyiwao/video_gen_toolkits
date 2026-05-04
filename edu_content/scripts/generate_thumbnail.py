@@ -6,7 +6,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 # --- Configuration ---
-BASE_PATH = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
+BASE_PATH = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
 TEMPLATE_FILENAME = "thumbnail-template.png"
 OUTPUT_DIR = BASE_PATH / "output" / "output_long"
 

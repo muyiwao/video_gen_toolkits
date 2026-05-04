@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 # --- Configuration ---
-BASE_PATH = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
+BASE_PATH = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
 VIDEO_INPUT = BASE_PATH / "input" / "video_pools"
 AUDIO_INPUT = BASE_PATH / "input" / "audio_pools"
 JSON_METADATA = BASE_PATH / "input" / "metadata.json"

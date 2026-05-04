@@ -15,7 +15,7 @@ sys.path.append(str(root_path))
 from scripts import generate_thumbnail
 
 # --- CONFIGURATION ---
-BASE_PATH = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
+BASE_PATH = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
 MAIN_V_DIR = BASE_PATH / "edu_content" / "raw_lessons"
 JSON_METADATA_PATH = BASE_PATH / "input" / "metadata.json"
 

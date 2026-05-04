@@ -28,8 +28,8 @@ def harvest_channel_urls_only():
     print("\n--- YouTube Channel URL Formatter ---")
     
     # --- 1. PATH CONFIGURATION ---
-    input_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input\text_files")
-    output_base_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\yt_utils\yt_dls")
+    input_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input\text_files")
+    output_base_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\yt_utils\yt_dls")
     
     selected_file = select_input_file(input_dir)
     if not selected_file: return

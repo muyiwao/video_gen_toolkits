@@ -5,8 +5,8 @@ from pathlib import Path
 from PIL import Image, ImageEnhance, ImageFilter
 
 # --- PATH CONFIGURATION ---
-VIDEO_DIR = Path(r'C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced')
-THUMB_OUT_DIR = Path(r'C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_long')
+VIDEO_DIR = Path(r'C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\enhanced')
+THUMB_OUT_DIR = Path(r'C:\Project_Works\MuyProjects\video_gen_toolkits\output\output_long')
 THUMB_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- CTR & PLATFORM CONFIGURATION ---

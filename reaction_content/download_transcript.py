@@ -18,7 +18,7 @@ def download_transcript():
         return
 
     output_txt = "youtube_transcript.txt"
-    cookie_file = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\reaction_content\cookies.txt")
+    cookie_file = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\reaction_content\cookies.txt")
 
     # --- UPDATED COMMAND: Removed strict --sub-format json3 ---
     cmd = [

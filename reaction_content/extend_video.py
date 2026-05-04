@@ -29,8 +29,8 @@ def get_video_info(file_path):
 
 def fast_extend_video():
     # --- 1. Path Configuration ---
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input")
-    output_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\output_long")
+    source_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input")
+    output_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\output\output_long")
     output_dir.mkdir(parents=True, exist_ok=True)
     temp_list = output_dir / "concat_list.txt"
 

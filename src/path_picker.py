@@ -48,7 +48,7 @@ def interactive_path_picker(base_path):
 
 # --- Example Usage (How to call it in another script) ---
 if __name__ == "__main__":
-    start_point = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits"
+    start_point = r"C:\Project_Works\MuyProjects\video_gen_toolkits"
     chosen_destination = interactive_path_picker(start_point)
     
     print(f"\n✅ Final Destination Path: {chosen_destination}")

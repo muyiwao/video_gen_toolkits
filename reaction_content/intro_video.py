@@ -2,7 +2,7 @@ import os
 from moviepy import VideoFileClip, CompositeVideoClip, ImageClip, ColorClip
 
 # --- PATH CONFIGURATION ---
-input_dir = r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input\video_pools"
+input_dir = r"C:\Project_Works\MuyProjects\video_gen_toolkits\input\video_pools"
 bg_image_path = os.path.join(input_dir, "background.jpg") 
 output_path = os.path.join(input_dir, "dancing_intro_4k_grid.mp4")
 video_files = ["1.mp4", "2.mp4", "3.mp4", "4.mp4"]

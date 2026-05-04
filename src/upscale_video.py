@@ -26,8 +26,8 @@ def upscale_videos():
     target_width = selected[1]
 
     # 2. Path Setup
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\raw")
-    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output") / f"upscaled_{target_res_label}"
+    source_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\raw")
+    dest_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\output") / f"upscaled_{target_res_label}"
     
     dest_dir.mkdir(parents=True, exist_ok=True)
 

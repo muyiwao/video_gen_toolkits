@@ -5,8 +5,8 @@ from pathlib import Path
 
 def extract_frames():
     # --- 1. Define Paths ---
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input")
-    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\images")
+    source_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input")
+    dest_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\output\images")
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     # --- 2. File Selection ---

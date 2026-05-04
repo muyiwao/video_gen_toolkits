@@ -34,7 +34,7 @@ def select_video_file(directory):
 
 def extract_audio():
     # 1. Define Base Path
-    source_base = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
+    source_base = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\enhanced")
     
     # 2. Use the Interactive Picker to find the source folder
     print("Step 1: Navigate to the folder containing your source video.")

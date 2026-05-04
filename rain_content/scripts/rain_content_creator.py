@@ -108,7 +108,7 @@ def format_duration(total_minutes):
 
 def process_long_content():
     # 1. Paths Configuration
-    base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
+    base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
     source_dir = base_path / "rain_content" / "recorded" / "enhanced"
     asset_dir = base_path / "rain_content" / "attachments" / "long"
     output_dir = base_path / "output" / "output_long"
@@ -267,7 +267,7 @@ def process_shorts_batch():
     Matching-Pair JSON metadata files with Master Volume Control.
     """
     # --- 1. Path Configurations ---
-    base_path = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits")
+    base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
     source_dir = base_path / "rain_content" / "recorded" / "enhanced"
     audio_base_dir = base_path / "input" / "audio_pools"
     asset_dir = base_path / "rain_content" / "attachments" / "shorts"

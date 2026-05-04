@@ -38,7 +38,7 @@ def harvest_channel_keywords():
     
     # --- 1. PATH CONFIGURATION ---
     # Looking in the utility folder where URLs were saved
-    input_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\yt_utils\yt_dls")
+    input_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\yt_utils\yt_dls")
     output_dir = input_dir 
     
     selected_file = select_input_file(input_dir)

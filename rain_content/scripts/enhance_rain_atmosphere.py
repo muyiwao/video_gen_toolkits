@@ -24,8 +24,8 @@ def select_raw_video(directory):
 
 def enhance_rain_atmosphere():
     # 1. Path Configuration
-    raw_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\raw")
-    enhanced_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\rain_content\recorded\enhanced")
+    raw_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\raw")
+    enhanced_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\enhanced")
     
     # Ensure destination exists
     enhanced_dir.mkdir(parents=True, exist_ok=True)

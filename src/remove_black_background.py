@@ -4,8 +4,8 @@ from pathlib import Path
 
 def remove_black_background():
     # --- CONFIGURATION ---
-    source_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\input")
-    dest_dir = Path(r"C:\Project_Works\YouTubeVideos\video_gen_toolkits\output\attachments")
+    source_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input")
+    dest_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\output\attachments")
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Aspect Ratio Selection
