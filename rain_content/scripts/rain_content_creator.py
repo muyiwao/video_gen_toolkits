@@ -188,7 +188,7 @@ def process_long_content():
         with open(list_file, "w") as f:
             for _ in range(math.ceil(target_minutes)): f.write(f"file '{segment_file.name}'\n")
 
-        scroll_speed = 100
+        scroll_speed = 50  # Adjust this value to make the text scroll faster or slower
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
