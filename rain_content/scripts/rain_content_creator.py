@@ -92,302 +92,6 @@ def format_duration(total_minutes):
     if seconds > 0: parts.append(f"{seconds}s")
     return " ".join(parts) if parts else "0s"
 
-    # --- 1. Path Configuration ---
-    base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
-    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
-    asset_dir = base_path / "rain_content" / "attachments" / "long"
-    output_dir = base_path / "output" / "output_long"
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    img_logo_path = asset_dir / "screen-logo.png"
-
-    # --- 2. Selection ---
-    video_input = select_video_file(source_dir)
-    rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain")
-    if not video_input or not rain_input:
-        return
-
-    sfx_input = select_optional_file(base_path / "input" / "audio_pools" / "sfx", "Secondary SFX")
-    music_input = select_optional_file(base_path / "input" / "audio_pools" / "music", "Tertiary Music")
-
-    # --- 3. Phase Logic ---
-    print("\n--- Phase Allocation (Total must be 100%) ---")
-    p1_pct = float(input("Phase 1: Ultra Quality %: ") or 100)
-
-    if p1_pct >= 100:
-        p2_pct, p3_pct = 0, 0
-    else:
-        p2_pct = float(input(f"Phase 2: Dark Fade % (Remaining {100 - p1_pct}%): ") or 0)
-        p3_pct = max(0, 100 - p1_pct - p2_pct)
-
-    print(f">> Final Split: P1: {p1_pct}% | P2: {p2_pct}% | P3: {p3_pct}%")
-
-    # --- 4. Runtime ---
-    target_minutes = float(input("\nEnter DESIRED final length (Minutes): "))
-    total_seconds = int(target_minutes * 60)
-
-    p2_start = (p1_pct / 100) * total_seconds
-    p2_duration = (p2_pct / 100) * total_seconds
-    p3_start = p2_start + p2_duration
-
-    fade_duration = max(p2_duration, 0.1)
-
-    res_map = {
-        "480p": "854:480",
-        "720p": "1280:720",
-        "1080p": "1920:1080",
-        "2k": "2560:1440",
-        "4k": "3840:2160"
-    }
-
-    res_choice = input("Resolution (4k, 2k, 1080p, 720p): ").lower().strip()
-    target_res = res_map.get(res_choice, "3840:2160")
-    w, h = target_res.split(':')
-
-    final_output = output_dir / f"Rain_Phase_Video_{int(target_minutes)}m.mp4"
-
-    # --- 5A. VIDEO FILTER (FIXED) ---
-    font_path = "C\\\\:/Windows/Fonts/arial.ttf"
-
-    filter_v = (
-        f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
-        f"crop={w}:{h},setsar=1,"
-        f"fade=t=out:st={p2_start}:d={fade_duration}:color=black[v_faded];"
-
-        f"[v_faded]drawbox=x=0:y=0:w=iw:h=ih:color=black:"
-        f"thickness=fill:enable='gte(t,{p3_start})'[v_dark];"
-
-        f"[1:v]scale={w}:{h}[logo];"
-        f"[v_dark][logo]overlay=0:0:enable='between(t,5,{p2_start})'[v_logo];"
-
-        f"[v_logo]drawtext=text='Calm Rain':"
-        f"fontfile='{font_path}':"
-        f"fontsize=40:fontcolor=white@0.5:"
-        f"x='w-mod(t*60,w+text_w)':y=h-100:"
-        f"enable='between(t,5,{p2_start})'[vout]"
-    )
-
-    # --- 5B. AUDIO FILTER (SAFE EXPRESSIONS) ---
-    fade_denom = max(p2_duration, 0.1)
-
-    vol_clean = f"max(1-(t-{p2_start})/{fade_denom},0)"
-    vol_muff = f"min((t-{p2_start})/{fade_denom},1)"
-    vol_brn = f"min(0.12*(t-{p2_start})/{fade_denom},0.12)"
-
-    audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
-
-    filter_a = (
-        f"anoisesrc=d={total_seconds}:c=brown:r=44100,"
-        f"volume='{vol_brn}':eval=frame[brn_layer];"
-        f"[2:a]bass=g=5:f=100,volume=0.8[rain_p];"
-    )
-
-    mix_srcs = ["[rain_p]"]
-    idx = 3
-
-    if sfx_input:
-        audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-        filter_a += f"[{idx}:a]volume=0.15[sfx_p];"
-        mix_srcs.append("[sfx_p]")
-        idx += 1
-
-    if music_input:
-        audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-        filter_a += f"[{idx}:a]volume=0.10[music_p];"
-        mix_srcs.append("[music_p]")
-        idx += 1
-
-    filter_a += (
-        f"{''.join(mix_srcs)}amix=inputs={len(mix_srcs)}:duration=first[full_mix];"
-        f"[full_mix]asplit=2[clean][muff];"
-        f"[muff]lowpass=f=350[muff_lp];"
-        f"[clean]volume='{vol_clean}':eval=frame[clean_faded];"
-        f"[muff_lp]volume='{vol_muff}':eval=frame[muff_faded];"
-        f"[clean_faded][muff_faded][brn_layer]amix=inputs=3:weights='1 1 1'[final_a]"
-    )
-
-    # --- 6. COMMAND ---
-    print(f"\n[Executing] Rendering {target_minutes}m Phase-Shifted Content...")
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-stream_loop", "-1", "-i", str(video_input),
-        "-i", str(img_logo_path),
-    ] + audio_inputs + [
-        "-filter_complex", f"{filter_v};{filter_a}",
-        "-map", "[vout]",
-        "-map", "[final_a]",
-        "-t", str(total_seconds),
-        "-c:v", "libx264", "-crf", "20", "-preset", "veryfast",
-        "-c:a", "aac", "-b:a", "320k",
-        str(final_output)
-    ]
-
-    subprocess.run(cmd, check=True)
-
-    print(f"\n✅ SUCCESS! File created: {final_output}")
-
-    # ---------------------------
-    # 1. PATH SETUP
-    # ---------------------------
-    base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
-    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
-    asset_dir = base_path / "rain_content" / "attachments" / "long"
-    output_dir = base_path / "output" / "output_long"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    img_logo_path = asset_dir / "screen-logo.png"
-
-    # ---------------------------
-    # 2. INPUT SELECTION
-    # ---------------------------
-    print("\nSelect your main background video (looped automatically)")
-    video_input = select_video_file(source_dir)
-
-    print("\nSelect your PRIMARY rain audio (this drives the atmosphere)")
-    rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain")
-
-    if not video_input or not rain_input:
-        print("❌ Missing required inputs. Aborting.")
-        return
-
-    print("\nOptional: Add texture layers to enrich realism")
-    sfx_input = select_optional_file(base_path / "input" / "audio_pools" / "sfx", "Secondary SFX (e.g. roof, window)")
-    music_input = select_optional_file(base_path / "input" / "audio_pools" / "music", "Background ambience/music")
-
-    # ---------------------------
-    # 3. PHASE DESIGN
-    # ---------------------------
-    print("\n--- Phase Design ---")
-    print("Phase 1 = Full clarity")
-    print("Phase 2 = Gradual fade to dark + muffled audio")
-    print("Phase 3 = Fully dark + sleep state")
-
-    p1_pct = float(input("Phase 1 (% of video, default 100): ") or 100)
-
-    if p1_pct >= 100:
-        p2_pct, p3_pct = 0, 0
-    else:
-        remaining = 100 - p1_pct
-        p2_pct = float(input(f"Phase 2 (% of remaining {remaining}): ") or 0)
-        p3_pct = max(0, 100 - p1_pct - p2_pct)
-
-    print(f"Final Split → P1:{p1_pct}% | P2:{p2_pct}% | P3:{p3_pct}%")
-
-    # ---------------------------
-    # 4. DURATION
-    # ---------------------------
-    minutes = float(input("\nEnter final duration (minutes): "))
-    total_seconds = int(minutes * 60)
-
-    p2_start = (p1_pct / 100) * total_seconds
-    p2_duration = max((p2_pct / 100) * total_seconds, 0.1)
-    p3_start = p2_start + p2_duration
-
-    # ---------------------------
-    # 5. RESOLUTION
-    # ---------------------------
-    res_map = {
-        "720p": "1280:720",
-        "1080p": "1920:1080",
-        "2k": "2560:1440",
-        "4k": "3840:2160"
-    }
-
-    res = input("Resolution (720p,1080p,2k,4k): ").lower().strip()
-    target_res = res_map.get(res, "2560:1440")
-    w, h = target_res.split(":")
-
-    output_file = output_dir / f"Rain_Phase_Video_{int(minutes)}m.mp4"
-
-    # ---------------------------
-    # 6. VIDEO FILTER (FIXED)
-    # ---------------------------
-    filter_v = (
-        f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
-        f"crop={w}:{h},setsar=1,"
-        f"fade=t=out:st={p2_start}:d={p2_duration}:color=black[v1];"
-
-        f"[v1]drawbox=x=0:y=0:w=iw:h=ih:color=black:"
-        f"thickness=fill:enable=gte(t\\,{p3_start})[v2];"
-
-        f"[1:v]scale={w}:{h}[logo];"
-        f"[v2][logo]overlay=0:0:enable=between(t\\,5\\,{p2_start})[v3];"
-
-        # FIXED drawtext (NO fontfile path issues)
-        f"[v3]drawtext=text=Calm\\ Rain:"
-        f"font=Arial:"
-        f"fontsize=40:"
-        f"fontcolor=white@0.5:"
-        f"x=w-mod(t*60\\,w+text_w):"
-        f"y=h-100:"
-        f"enable=between(t\\,5\\,{p2_start})"
-        f"[vout]"
-    )
-
-    # ---------------------------
-    # 7. AUDIO FILTER (SAFE)
-    # ---------------------------
-    denom = max(p2_duration, 0.1)
-
-    vol_clean = f"max(1-(t-{p2_start})/{denom},0)"
-    vol_muff = f"min((t-{p2_start})/{denom},1)"
-    vol_brn = f"min(0.12*(t-{p2_start})/{denom},0.12)"
-
-    audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
-
-    filter_a = (
-        f"anoisesrc=d={total_seconds}:c=brown:r=44100,"
-        f"volume='{vol_brn}':eval=frame[brn];"
-        f"[2:a]bass=g=5:f=100,volume=0.8[rain];"
-    )
-
-    mix = ["[rain]"]
-    idx = 3
-
-    if sfx_input:
-        audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
-        filter_a += f"[{idx}:a]volume=0.15[sfx];"
-        mix.append("[sfx]")
-        idx += 1
-
-    if music_input:
-        audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
-        filter_a += f"[{idx}:a]volume=0.10[music];"
-        mix.append("[music]")
-        idx += 1
-
-    filter_a += (
-        f"{''.join(mix)}amix=inputs={len(mix)}:duration=first[mix1];"
-        f"[mix1]asplit=2[clean][muff];"
-        f"[muff]lowpass=f=350[muff2];"
-        f"[clean]volume='{vol_clean}':eval=frame[c];"
-        f"[muff2]volume='{vol_muff}':eval=frame[m];"
-        f"[c][m][brn]amix=inputs=3[final_a]"
-    )
-
-    # ---------------------------
-    # 8. EXECUTION
-    # ---------------------------
-    cmd = [
-        "ffmpeg", "-y",
-        "-stream_loop", "-1", "-i", str(video_input),
-        "-i", str(img_logo_path)
-    ] + audio_inputs + [
-        "-filter_complex", f"{filter_v};{filter_a}",
-        "-map", "[vout]",
-        "-map", "[final_a]",
-        "-t", str(total_seconds),
-        "-c:v", "libx264", "-crf", "20", "-preset", "veryfast",
-        "-c:a", "aac", "-b:a", "320k",
-        str(output_file)
-    ]
-
-    print("\nRendering video... This may take time depending on length.")
-    subprocess.run(cmd, check=True)
-
-    print(f"\n✅ SUCCESS → {output_file}")
-
 def get_phase_configuration():
     """
     Collects and validates phase distribution from user.
@@ -490,7 +194,7 @@ def process_long_content():
     asset_dir = base_path / "rain_content" / "attachments" / "long"
     output_dir = base_path / "output" / "output_long"
     sfx_pool = base_path / "input" / "audio_pools" / "sfx"
-    music_pool = base_path / "input" / "audio_pools" / "music"
+    music_pool = base_path / "input" / "audio_pools" / "music-sfx"
     
     output_dir.mkdir(parents=True, exist_ok=True)
     img_logo_path = asset_dir / "screen-logo.png"
@@ -502,7 +206,7 @@ def process_long_content():
     if not video_input or not rain_input: return
 
     sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
-    music_input = select_optional_file(music_pool, "Tertiary Music")
+    music_input = select_optional_file(music_pool, "Tertiary Music/SFX")
 
     # --- Phase & Duration Configuration ---
     p1, p2, p3 = get_phase_configuration()
@@ -523,7 +227,7 @@ def process_long_content():
         
         rain_vol = float(input("Rain Layer Volume % [Default 75]: ") or 75) / 100
         sfx_vol = float(input("SFX Layer Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
-        music_vol = float(input("Music Layer Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
+        music_vol = float(input("Music/SFX Layer Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
     except ValueError:
         speed_factor, master_gain, rain_vol, sfx_vol, music_vol = 1.0, 1.0, 0.75, 0.15, 0.10
 
@@ -662,7 +366,7 @@ def process_shorts_batch():
     if not video_input or not rain_input: return
 
     sfx_input = select_optional_file(audio_base_dir / "sfx", "Secondary SFX")
-    music_input = select_optional_file(audio_base_dir / "music", "Tertiary Music")
+    music_input = select_optional_file(audio_base_dir / "music", "Tertiary Music/SFX")
 
     # --- 4. Duration & Resolution ---
     dur_raw = input("\nTarget Duration (e.g., 59) [Default 59s]: ").strip().lower()
