@@ -92,6 +92,397 @@ def format_duration(total_minutes):
     if seconds > 0: parts.append(f"{seconds}s")
     return " ".join(parts) if parts else "0s"
 
+    # --- 1. Path Configuration ---
+    base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
+    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
+    asset_dir = base_path / "rain_content" / "attachments" / "long"
+    output_dir = base_path / "output" / "output_long"
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    img_logo_path = asset_dir / "screen-logo.png"
+
+    # --- 2. Selection ---
+    video_input = select_video_file(source_dir)
+    rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain")
+    if not video_input or not rain_input:
+        return
+
+    sfx_input = select_optional_file(base_path / "input" / "audio_pools" / "sfx", "Secondary SFX")
+    music_input = select_optional_file(base_path / "input" / "audio_pools" / "music", "Tertiary Music")
+
+    # --- 3. Phase Logic ---
+    print("\n--- Phase Allocation (Total must be 100%) ---")
+    p1_pct = float(input("Phase 1: Ultra Quality %: ") or 100)
+
+    if p1_pct >= 100:
+        p2_pct, p3_pct = 0, 0
+    else:
+        p2_pct = float(input(f"Phase 2: Dark Fade % (Remaining {100 - p1_pct}%): ") or 0)
+        p3_pct = max(0, 100 - p1_pct - p2_pct)
+
+    print(f">> Final Split: P1: {p1_pct}% | P2: {p2_pct}% | P3: {p3_pct}%")
+
+    # --- 4. Runtime ---
+    target_minutes = float(input("\nEnter DESIRED final length (Minutes): "))
+    total_seconds = int(target_minutes * 60)
+
+    p2_start = (p1_pct / 100) * total_seconds
+    p2_duration = (p2_pct / 100) * total_seconds
+    p3_start = p2_start + p2_duration
+
+    fade_duration = max(p2_duration, 0.1)
+
+    res_map = {
+        "480p": "854:480",
+        "720p": "1280:720",
+        "1080p": "1920:1080",
+        "2k": "2560:1440",
+        "4k": "3840:2160"
+    }
+
+    res_choice = input("Resolution (4k, 2k, 1080p, 720p): ").lower().strip()
+    target_res = res_map.get(res_choice, "3840:2160")
+    w, h = target_res.split(':')
+
+    final_output = output_dir / f"Rain_Phase_Video_{int(target_minutes)}m.mp4"
+
+    # --- 5A. VIDEO FILTER (FIXED) ---
+    font_path = "C\\\\:/Windows/Fonts/arial.ttf"
+
+    filter_v = (
+        f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
+        f"crop={w}:{h},setsar=1,"
+        f"fade=t=out:st={p2_start}:d={fade_duration}:color=black[v_faded];"
+
+        f"[v_faded]drawbox=x=0:y=0:w=iw:h=ih:color=black:"
+        f"thickness=fill:enable='gte(t,{p3_start})'[v_dark];"
+
+        f"[1:v]scale={w}:{h}[logo];"
+        f"[v_dark][logo]overlay=0:0:enable='between(t,5,{p2_start})'[v_logo];"
+
+        f"[v_logo]drawtext=text='Calm Rain':"
+        f"fontfile='{font_path}':"
+        f"fontsize=40:fontcolor=white@0.5:"
+        f"x='w-mod(t*60,w+text_w)':y=h-100:"
+        f"enable='between(t,5,{p2_start})'[vout]"
+    )
+
+    # --- 5B. AUDIO FILTER (SAFE EXPRESSIONS) ---
+    fade_denom = max(p2_duration, 0.1)
+
+    vol_clean = f"max(1-(t-{p2_start})/{fade_denom},0)"
+    vol_muff = f"min((t-{p2_start})/{fade_denom},1)"
+    vol_brn = f"min(0.12*(t-{p2_start})/{fade_denom},0.12)"
+
+    audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
+
+    filter_a = (
+        f"anoisesrc=d={total_seconds}:c=brown:r=44100,"
+        f"volume='{vol_brn}':eval=frame[brn_layer];"
+        f"[2:a]bass=g=5:f=100,volume=0.8[rain_p];"
+    )
+
+    mix_srcs = ["[rain_p]"]
+    idx = 3
+
+    if sfx_input:
+        audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
+        filter_a += f"[{idx}:a]volume=0.15[sfx_p];"
+        mix_srcs.append("[sfx_p]")
+        idx += 1
+
+    if music_input:
+        audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
+        filter_a += f"[{idx}:a]volume=0.10[music_p];"
+        mix_srcs.append("[music_p]")
+        idx += 1
+
+    filter_a += (
+        f"{''.join(mix_srcs)}amix=inputs={len(mix_srcs)}:duration=first[full_mix];"
+        f"[full_mix]asplit=2[clean][muff];"
+        f"[muff]lowpass=f=350[muff_lp];"
+        f"[clean]volume='{vol_clean}':eval=frame[clean_faded];"
+        f"[muff_lp]volume='{vol_muff}':eval=frame[muff_faded];"
+        f"[clean_faded][muff_faded][brn_layer]amix=inputs=3:weights='1 1 1'[final_a]"
+    )
+
+    # --- 6. COMMAND ---
+    print(f"\n[Executing] Rendering {target_minutes}m Phase-Shifted Content...")
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-stream_loop", "-1", "-i", str(video_input),
+        "-i", str(img_logo_path),
+    ] + audio_inputs + [
+        "-filter_complex", f"{filter_v};{filter_a}",
+        "-map", "[vout]",
+        "-map", "[final_a]",
+        "-t", str(total_seconds),
+        "-c:v", "libx264", "-crf", "20", "-preset", "veryfast",
+        "-c:a", "aac", "-b:a", "320k",
+        str(final_output)
+    ]
+
+    subprocess.run(cmd, check=True)
+
+    print(f"\n✅ SUCCESS! File created: {final_output}")
+
+    # ---------------------------
+    # 1. PATH SETUP
+    # ---------------------------
+    base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
+    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
+    asset_dir = base_path / "rain_content" / "attachments" / "long"
+    output_dir = base_path / "output" / "output_long"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    img_logo_path = asset_dir / "screen-logo.png"
+
+    # ---------------------------
+    # 2. INPUT SELECTION
+    # ---------------------------
+    print("\nSelect your main background video (looped automatically)")
+    video_input = select_video_file(source_dir)
+
+    print("\nSelect your PRIMARY rain audio (this drives the atmosphere)")
+    rain_input = select_audio_file(base_path / "input" / "audio_pools" / "rain")
+
+    if not video_input or not rain_input:
+        print("❌ Missing required inputs. Aborting.")
+        return
+
+    print("\nOptional: Add texture layers to enrich realism")
+    sfx_input = select_optional_file(base_path / "input" / "audio_pools" / "sfx", "Secondary SFX (e.g. roof, window)")
+    music_input = select_optional_file(base_path / "input" / "audio_pools" / "music", "Background ambience/music")
+
+    # ---------------------------
+    # 3. PHASE DESIGN
+    # ---------------------------
+    print("\n--- Phase Design ---")
+    print("Phase 1 = Full clarity")
+    print("Phase 2 = Gradual fade to dark + muffled audio")
+    print("Phase 3 = Fully dark + sleep state")
+
+    p1_pct = float(input("Phase 1 (% of video, default 100): ") or 100)
+
+    if p1_pct >= 100:
+        p2_pct, p3_pct = 0, 0
+    else:
+        remaining = 100 - p1_pct
+        p2_pct = float(input(f"Phase 2 (% of remaining {remaining}): ") or 0)
+        p3_pct = max(0, 100 - p1_pct - p2_pct)
+
+    print(f"Final Split → P1:{p1_pct}% | P2:{p2_pct}% | P3:{p3_pct}%")
+
+    # ---------------------------
+    # 4. DURATION
+    # ---------------------------
+    minutes = float(input("\nEnter final duration (minutes): "))
+    total_seconds = int(minutes * 60)
+
+    p2_start = (p1_pct / 100) * total_seconds
+    p2_duration = max((p2_pct / 100) * total_seconds, 0.1)
+    p3_start = p2_start + p2_duration
+
+    # ---------------------------
+    # 5. RESOLUTION
+    # ---------------------------
+    res_map = {
+        "720p": "1280:720",
+        "1080p": "1920:1080",
+        "2k": "2560:1440",
+        "4k": "3840:2160"
+    }
+
+    res = input("Resolution (720p,1080p,2k,4k): ").lower().strip()
+    target_res = res_map.get(res, "2560:1440")
+    w, h = target_res.split(":")
+
+    output_file = output_dir / f"Rain_Phase_Video_{int(minutes)}m.mp4"
+
+    # ---------------------------
+    # 6. VIDEO FILTER (FIXED)
+    # ---------------------------
+    filter_v = (
+        f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
+        f"crop={w}:{h},setsar=1,"
+        f"fade=t=out:st={p2_start}:d={p2_duration}:color=black[v1];"
+
+        f"[v1]drawbox=x=0:y=0:w=iw:h=ih:color=black:"
+        f"thickness=fill:enable=gte(t\\,{p3_start})[v2];"
+
+        f"[1:v]scale={w}:{h}[logo];"
+        f"[v2][logo]overlay=0:0:enable=between(t\\,5\\,{p2_start})[v3];"
+
+        # FIXED drawtext (NO fontfile path issues)
+        f"[v3]drawtext=text=Calm\\ Rain:"
+        f"font=Arial:"
+        f"fontsize=40:"
+        f"fontcolor=white@0.5:"
+        f"x=w-mod(t*60\\,w+text_w):"
+        f"y=h-100:"
+        f"enable=between(t\\,5\\,{p2_start})"
+        f"[vout]"
+    )
+
+    # ---------------------------
+    # 7. AUDIO FILTER (SAFE)
+    # ---------------------------
+    denom = max(p2_duration, 0.1)
+
+    vol_clean = f"max(1-(t-{p2_start})/{denom},0)"
+    vol_muff = f"min((t-{p2_start})/{denom},1)"
+    vol_brn = f"min(0.12*(t-{p2_start})/{denom},0.12)"
+
+    audio_inputs = ["-stream_loop", "-1", "-i", str(rain_input)]
+
+    filter_a = (
+        f"anoisesrc=d={total_seconds}:c=brown:r=44100,"
+        f"volume='{vol_brn}':eval=frame[brn];"
+        f"[2:a]bass=g=5:f=100,volume=0.8[rain];"
+    )
+
+    mix = ["[rain]"]
+    idx = 3
+
+    if sfx_input:
+        audio_inputs += ["-stream_loop", "-1", "-i", str(sfx_input)]
+        filter_a += f"[{idx}:a]volume=0.15[sfx];"
+        mix.append("[sfx]")
+        idx += 1
+
+    if music_input:
+        audio_inputs += ["-stream_loop", "-1", "-i", str(music_input)]
+        filter_a += f"[{idx}:a]volume=0.10[music];"
+        mix.append("[music]")
+        idx += 1
+
+    filter_a += (
+        f"{''.join(mix)}amix=inputs={len(mix)}:duration=first[mix1];"
+        f"[mix1]asplit=2[clean][muff];"
+        f"[muff]lowpass=f=350[muff2];"
+        f"[clean]volume='{vol_clean}':eval=frame[c];"
+        f"[muff2]volume='{vol_muff}':eval=frame[m];"
+        f"[c][m][brn]amix=inputs=3[final_a]"
+    )
+
+    # ---------------------------
+    # 8. EXECUTION
+    # ---------------------------
+    cmd = [
+        "ffmpeg", "-y",
+        "-stream_loop", "-1", "-i", str(video_input),
+        "-i", str(img_logo_path)
+    ] + audio_inputs + [
+        "-filter_complex", f"{filter_v};{filter_a}",
+        "-map", "[vout]",
+        "-map", "[final_a]",
+        "-t", str(total_seconds),
+        "-c:v", "libx264", "-crf", "20", "-preset", "veryfast",
+        "-c:a", "aac", "-b:a", "320k",
+        str(output_file)
+    ]
+
+    print("\nRendering video... This may take time depending on length.")
+    subprocess.run(cmd, check=True)
+
+    print(f"\n✅ SUCCESS → {output_file}")
+
+def get_phase_configuration():
+    """
+    Collects and validates phase distribution from user.
+
+    Returns:
+        tuple: (p1_pct, p2_pct, p3_pct)
+    """
+
+    print("\n--- Phase Design Configuration ---")
+    print("Define how the video transitions over time:")
+    print("• Phase 1 → Full clarity (visual + audio)")
+    print("• Phase 2 → Gradual fade to dark + muffled sound")
+    print("• Phase 3 → Fully dark (sleep state)")
+    print("NOTE: Total must not exceed 100%")
+
+    while True:
+        try:
+            p1_pct = float(input("\nEnter Phase 1 percentage (default 100): ") or 100)
+
+            if p1_pct >= 100:
+                print("Phase 1 consumes entire timeline. No fade will occur.")
+                return p1_pct, 0.0, 0.0
+
+            remaining = 100 - p1_pct
+            print(f"Remaining percentage available: {remaining:.2f}%")
+
+            p2_pct = float(input(f"Enter Phase 2 percentage (≤ {remaining}): ") or 0)
+
+            if p2_pct > remaining:
+                print("❌ Phase 2 exceeds remaining allocation. Try again.")
+                continue
+
+            p3_pct = 100 - p1_pct - p2_pct
+
+            print("\n✅ Final Phase Distribution:")
+            print(f"• Phase 1: {p1_pct:.2f}%")
+            print(f"• Phase 2: {p2_pct:.2f}%")
+            print(f"• Phase 3: {p3_pct:.2f}%")
+
+            return p1_pct, p2_pct, p3_pct
+
+        except ValueError:
+            print("❌ Invalid input. Please enter numeric values.")
+
+def compute_timeline(p1_pct, p2_pct, p3_pct):
+    """
+    Computes timeline values based on phase percentages.
+
+    Args:
+        p1_pct (float)
+        p2_pct (float)
+        p3_pct (float)
+
+    Returns:
+        dict containing timeline values
+    """
+
+    print("\n--- Duration Setup ---")
+    print("Specify how long the final rendered video should be.")
+
+    while True:
+        try:
+            minutes = float(input("Enter total duration (minutes): "))
+            if minutes <= 0:
+                print("❌ Duration must be greater than 0.")
+                continue
+
+            total_seconds = int(minutes * 60)
+
+            # Phase calculations
+            p2_start = (p1_pct / 100) * total_seconds
+            p2_duration = (p2_pct / 100) * total_seconds
+            p3_start = p2_start + p2_duration
+
+            # Safety guard (prevents division errors later)
+            fade_duration = max(p2_duration, 0.1)
+
+            print("\n✅ Timeline Computed:")
+            print(f"• Total Duration: {total_seconds}s")
+            print(f"• Phase 2 Start: {p2_start:.2f}s")
+            print(f"• Phase 2 Duration: {p2_duration:.2f}s")
+            print(f"• Phase 3 Start: {p3_start:.2f}s")
+
+            return {
+                "minutes": minutes,
+                "total_seconds": total_seconds,
+                "p2_start": p2_start,
+                "p2_duration": p2_duration,
+                "p3_start": p3_start,
+                "fade_duration": fade_duration
+            }
+
+        except ValueError:
+            print("❌ Invalid input. Please enter a numeric value.")
+
 def process_long_content():
     # 1. Paths Configuration
     base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
@@ -113,6 +504,13 @@ def process_long_content():
     sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
     music_input = select_optional_file(music_pool, "Tertiary Music")
 
+    # --- Phase & Duration Configuration ---
+    p1, p2, p3 = get_phase_configuration()
+    timeline = compute_timeline(p1, p2, p3)
+    
+    target_seconds = timeline["total_seconds"]
+    formatted_time = format_duration(timeline["minutes"])
+
     # --- Runtime Inputs ---
     print("\n--- Social CTA Ticker ---")
     default_sub = "More rain content is on the way; Subscribe so you never miss a moment of calm"
@@ -133,19 +531,11 @@ def process_long_content():
     res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
-    # --- Duration Logic ---
+    # --- Video Loop Logic ---
     duration, _ = get_video_info(video_input)
     adj_duration = duration * speed_factor
-    fade_dur = 1.0
-    loop_duration = adj_duration - fade_dur 
-
-    while True:
-        try:
-            target_minutes = float(input("Enter DESIRED final length (Decimal Minutes) - 2min Yield 1min: "))
-            target_seconds = int(target_minutes * 60)
-            formatted_time = format_duration(target_minutes)
-            break
-        except ValueError: print("❌ Invalid input.")
+    loop_fade_dur = 1.0 
+    loop_duration = adj_duration - loop_fade_dur 
 
     tile_file = output_dir / "temp_master_tile.mp4"
     segment_file = output_dir / "temp_1min_segment.mp4"
@@ -154,14 +544,13 @@ def process_long_content():
     final_output = output_dir / f"Rain_Video_{formatted_time.replace(' ', '_')}.mp4"
 
     try:
-        # --- STAGE 1 & 2: VIDEO ASSEMBLY (Unchanged) ---
-        print(f"\n[1/4] Preparing Video Loop...")
+        # [1/4] Preparing Video Loop
         filter_tile = (
             f"[0:v]setpts={speed_factor}*PTS,"
             f"scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
-            f"[over]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[fadein];"
-            f"[main]trim=start={fade_dur},setpts=PTS-STARTPTS[base];"
-            f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={fade_dur}:alpha=1[alpha_fade];"
+            f"[over]trim=start=0:end={loop_fade_dur},setpts=PTS-STARTPTS[fadein];"
+            f"[main]trim=start={loop_fade_dur},setpts=PTS-STARTPTS[base];"
+            f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={loop_fade_dur}:alpha=1[alpha_fade];"
             f"[base][alpha_fade]overlay=x=0:y=0:shortest=1[v]"
         )
         subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
@@ -170,28 +559,27 @@ def process_long_content():
             for _ in range(math.ceil(60 / loop_duration)): f.write(f"file '{tile_file.name}'\n")
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
-        print(f"[2/4] Assembling Silent Master...")
+        # [2/4] Assembling Master with Video Fade
+        print(f"[2/4] Assembling Master...")
         with open(list_file, "w") as f:
-            for _ in range(math.ceil(target_minutes)): f.write(f"file '{segment_file.name}'\n")
+            for _ in range(math.ceil(timeline["minutes"])): f.write(f"file '{segment_file.name}'\n")
 
-        scroll_speed = 50  # Adjust this value to make the text scroll faster or slower
+        scroll_speed = 50
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
-            f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
-            f"[v_logo]drawbox=y=ih-80:color=black@0.6:width=iw:height=60:t=fill:enable='gt(t,5)'[v_bg];"
+            f"[0:v][logo_sc]overlay=0:0:enable='between(t,5,{timeline['p2_start']})'[v_logo];"
+            f"[v_logo]drawbox=y=ih-80:color=black@0.6:width=iw:height=60:t=fill:enable='between(t,5,{timeline['p2_start']})'[v_bg];"
             f"[v_bg]drawtext=text='{sub_text}':font='Arial':fontsize=24:fontcolor=0x5cf629:"
-            f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-62:enable='gt(t,5)':"            
-            f"shadowcolor=black@0.8:shadowx=2:shadowy=2[vout]"
+            f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-62:enable='between(t,5,{timeline['p2_start']})':"            
+            f"shadowcolor=black@0.8:shadowx=2:shadowy=2[v_elements];"
+            f"[v_elements]fade=t=out:st={timeline['p2_start']}:d={timeline['fade_duration']}[vout]"
         )
-
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-i", str(img_logo_path), "-filter_complex", filter_final, "-map", "[vout]", "-t", str(target_seconds), "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)], check=True)
 
-        # --- STAGE 3: SEAMLESS AUDIO WITH PROFILES ---
-        print(f"\n[3/4] Blending Seamless Audio with Profile: 'long'...")
+        # [3/4] Blending Audio with Crossfade Muffling
+        print(f"\n[3/4] Blending Audio with Muffling Phase...")
         
-        # We define the "long" profile here from your AUDIO_PROFILES
         profile_filter = AUDIO_PROFILES["long"] 
-        
         audio_inputs = []
         filter_audio = ""
         mix_labels = ""
@@ -207,20 +595,17 @@ def process_long_content():
         for idx, (path, vol, name) in enumerate(active_layers):
             audio_inputs += ["-stream_loop", "-1", "-i", str(path)]
             
-            # SEAMLESS FIX: 
-            # 1. Apply your specific AUDIO_PROFILES logic (Bass boost/Volume)
-            # 2. Add 'afade' at start/end of the stream loop to prevent clicks
-            # 3. Add highpass/lowpass to stabilize the loop points
+            # FIX: Create two paths: one clear, one muffled, and fade between them
             filter_audio += (
-                f"[{idx+1}:a]{profile_filter}," # Applying your "long" profile
-                f"volume={vol},"
-                f"highpass=f=20,lowpass=f=18000,"
-                f"afade=t=in:st=0:d=0.1,afade=t=out:st={target_seconds-0.1}:d=0.1"
-                f"[{name}];"
+                f"[{idx+1}:a]{profile_filter},volume={vol},highpass=f=20,asplit=2[clr_{name}][muf_{name}];"
+                f"[muf_{name}]lowpass=f=400[muf_final_{name}];"
+                f"[clr_{name}]afade=t=out:st={timeline['p2_start']}:d={timeline['fade_duration']}[clr_fade_{name}];"
+                f"[muf_final_{name}]afade=t=in:st={timeline['p2_start']}:d={timeline['fade_duration']}[muf_fade_{name}];"
+                f"[clr_fade_{name}][muf_fade_{name}]amix=inputs=2:duration=first[merged_{name}];"
+                f"[merged_{name}]afade=t=in:st=0:d=0.1,afade=t=out:st={target_seconds-0.1}:d=0.1[{name}];"
             )
             mix_labels += f"[{name}]"
 
-        # Final Mixdown
         filter_audio += (
             f"{mix_labels}amix=inputs={len(active_layers)}:duration=first:dropout_transition=3:normalize=0[a_mixed];"
             f"[a_mixed]volume={master_gain}[final_a]"
@@ -235,7 +620,7 @@ def process_long_content():
             "-shortest", str(final_output)
         ], check=True)
 
-        print(f"\n✅ SUCCESS! {formatted_time} seamless video/audio created with Profile 'long'.")
+        print(f"\n✅ SUCCESS! {formatted_time} video created.")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
