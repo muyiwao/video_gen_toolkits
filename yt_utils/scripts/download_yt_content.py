@@ -5,7 +5,17 @@ from pathlib import Path
 
 def download_youtube_content():
     print("--- YouTube Multi-Downloader Tool ---")
-    url = input("🔗 Enter YouTube URL: ").strip()
+    
+    # 1. Collect URLs
+    raw_urls = input("🔗 Enter YouTube URL(s) [Separate by commas or spaces]: ").strip()
+    # Split by comma or space and filter out empty strings
+    urls = [u.strip() for u in re.split(r'[,\s]+', raw_urls) if u.strip()]
+    
+    if not urls:
+        print("❌ No URLs provided.")
+        return
+
+    print(f"\nDetected {len(urls)} link(s).")
     
     print("\nSelect Download Type:")
     print("1. Video WITH Audio (Highest Quality MP4)")
@@ -15,95 +25,95 @@ def download_youtube_content():
     
     choice = input("\nEnter choice (1, 2, 3, or 4): ").strip()
 
-    # --- Download Scope Selection ---
-    is_cut = False
-    start_ts = None
-    end_ts = None
-
-    if choice in ['1', '2', '3']:
-        print("\nSelect Download Scope:")
-        print("A. Full Video")
-        print("B. Specific Cut (Timestamp)")
-        scope = input("Enter choice (A or B): ").strip().upper()
-        
-        if scope == 'B':
-            is_cut = True
-            start_ts = input("   Enter Start Timestamp (e.g., 00:05:12): ").strip()
-            end_ts = input("   Enter End Timestamp (e.g., 00:05:46): ").strip()
-
     # Define Download Path
     download_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\yt_utils\yt_dls")
     download_path.mkdir(parents=True, exist_ok=True)
 
-    # Base options
-    ydl_opts = {
-        'noplaylist': True,
-        'quiet': False,
-        'no_warnings': False,
-    }
+    # --- Process Each URL ---
+    for index, url in enumerate(urls, 1):
+        print(f"\n{'='*40}")
+        print(f"Processing ({index}/{len(urls)}): {url}")
+        
+        is_cut = False
+        start_ts = None
+        end_ts = None
 
-    # --- Precise Cutting Logic ---
-    if is_cut:
-        ydl_opts.update({
-            'external_downloader': 'ffmpeg',
-            'external_downloader_args': {
-                'ffmpeg_i': ['-ss', start_ts, '-to', end_ts]
-            },
-            'force_keyframes_at_cuts': True, 
-        })
-
-    try:
-        if choice == '1':
-            # VIDEO WITH AUDIO
-            ydl_opts['outtmpl'] = str(download_path / '%(title).80s_full.%(ext)s')
-            ydl_opts.update({
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-                'merge_output_format': 'mp4',
-            })
-            print(f"\n🎬 Downloading Video + Audio...")
+        # Scope Selection (Asked per video if multiple links, as cuts are usually unique)
+        if choice in ['1', '2', '3']:
+            print(f"\nSelect Scope for this specific video:")
+            print("A. Full Video")
+            print("B. Specific Cut (Timestamp)")
+            scope = input("Enter choice (A or B): ").strip().upper()
             
-        elif choice == '2':
-            # VIDEO ONLY (SILENT)
-            ydl_opts['outtmpl'] = str(download_path / '%(title).80s_silent.%(ext)s')
+            if scope == 'B':
+                is_cut = True
+                start_ts = input("   Enter Start Timestamp (e.g., 00:00:10): ").strip()
+                end_ts = input("   Enter End Timestamp (e.g., 00:00:20): ").strip()
+
+        # Reset options for each download
+        ydl_opts = {
+            'noplaylist': True,
+            'quiet': False,
+            'no_warnings': False,
+        }
+
+        # Cutting Logic
+        if is_cut:
             ydl_opts.update({
-                'format': 'bestvideo[ext=mp4]/bestvideo',
-                'merge_output_format': 'mp4',
+                'external_downloader': 'ffmpeg',
+                'external_downloader_args': {
+                    'ffmpeg_i': ['-ss', start_ts, '-to', end_ts]
+                },
+                'force_keyframes_at_cuts': True, 
             })
-            print(f"\n🔇 Downloading Silent Video...")
 
-        elif choice == '3':
-            # AUDIO ONLY (MP3)
-            ydl_opts['outtmpl'] = str(download_path / '%(title).80s_audio.%(ext)s')
-            ydl_opts.update({
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-            })
-            print(f"\n🎵 Extracting Audio (MP3)...")
+        try:
+            if choice == '1':
+                ydl_opts['outtmpl'] = str(download_path / '%(title).80s_full.%(ext)s')
+                ydl_opts.update({
+                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                    'merge_output_format': 'mp4',
+                })
+                
+            elif choice == '2':
+                ydl_opts['outtmpl'] = str(download_path / '%(title).80s_silent.%(ext)s')
+                ydl_opts.update({
+                    'format': 'bestvideo[ext=mp4]/bestvideo',
+                    'merge_output_format': 'mp4',
+                })
 
-        elif choice == '4':
-            # THUMBNAIL
-            ydl_opts['outtmpl'] = str(download_path / '%(title).80s_thumb.%(ext)s')
-            ydl_opts.update({
-                'skip_download': True,
-                'writethumbnail': True,
-            })
-            print(f"\n🖼️ Downloading Thumbnail...")
+            elif choice == '3':
+                ydl_opts['outtmpl'] = str(download_path / '%(title).80s_audio.%(ext)s')
+                ydl_opts.update({
+                    'format': 'bestaudio/best',
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                })
 
-        else:
-            print("❌ Invalid selection.")
-            return
+            elif choice == '4':
+                ydl_opts['outtmpl'] = str(download_path / '%(title).80s_thumb.%(ext)s')
+                ydl_opts.update({
+                    'skip_download': True,
+                    'writethumbnail': True,
+                })
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            else:
+                print("❌ Invalid selection. Skipping...")
+                continue
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
             
-        print(f"\n✅ Task complete! Check folder: {download_path}")
+            print(f"✅ Finished: {url}")
 
-    except Exception as e:
-        print(f"❌ An error occurred: {e}")
+        except Exception as e:
+            print(f"❌ Error processing {url}: {e}")
+
+    print(f"\n--- ALL TASKS COMPLETE ---")
+    print(f"Files saved to: {download_path}")
 
 if __name__ == "__main__":
     download_youtube_content()
