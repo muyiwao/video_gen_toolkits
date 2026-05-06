@@ -13,7 +13,6 @@ sys.path.append(str(root_path))
 from scripts import thumbnail_extractor
 
 # --- CORE UTILITY FUNCTIONS ---
-
 def get_video_info(video_path):
     command = [
         "ffprobe", "-v", "error", "-select_streams", "v:0",
@@ -49,30 +48,7 @@ def select_video_file(video_dir):
         return video_files[choice - 1]
     except: return None
 
-# --- UPDATED AUDIO FILTER MAP ---
-AUDIO_PROFILES = {
-    "long": "bass=g=5:f=100,volume=-2dB",
-    "short_r": "lowpass=f=1500,volume=-1dB", 
-    "short_c": "highpass=f=1000,volume=0dB", 
-    # Switched 'extraer' to 'extrastereo' (Standard wide-sound filter)
-    "short_l": "aecho=0.8:0.3:40:0.3,extrastereo=m=2.5,volume=1dB", 
-    "live": "compand,aecho=0.8:0.88:60:0.2"
-}
-
 # --- PROCESSING MODULES ---
-def format_duration(total_minutes):
-    """Converts decimal minutes into a formatted string (Hours, Minutes, Seconds)."""
-    total_seconds = int(total_minutes * 60)
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
-    
-    parts = []
-    if hours > 0: parts.append(f"{hours}h")
-    if minutes > 0: parts.append(f"{minutes}m")
-    if seconds > 0: parts.append(f"{seconds}s")
-    return " ".join(parts) if parts else "0s"
-
 def select_optional_file(directory, label):
     """Helper to let user pick a file or skip it."""
     files = list(directory.glob("*.mp3")) + list(directory.glob("*.wav"))
@@ -92,6 +68,16 @@ def select_optional_file(directory, label):
         return files[int(choice) - 1]
     except (ValueError, IndexError):
         return None
+
+# --- UPDATED AUDIO FILTER MAP ---
+AUDIO_PROFILES = {
+    "long": "bass=g=5:f=100,volume=-2dB",
+    "short_r": "lowpass=f=1500,volume=-1dB", 
+    "short_c": "highpass=f=1000,volume=0dB", 
+    # Switched 'extraer' to 'extrastereo' (Standard wide-sound filter)
+    "short_l": "aecho=0.8:0.3:40:0.3,extrastereo=m=2.5,volume=1dB", 
+    "live": "compand,aecho=0.8:0.88:60:0.2"
+}
 
 def format_duration(total_minutes):
     """Converts decimal minutes into a formatted string (Hours, Minutes, Seconds)."""
