@@ -206,14 +206,7 @@ def process_long_content():
     if not video_input or not rain_input: return
 
     sfx_input = select_optional_file(sfx_pool, "Secondary SFX")
-    music_input = select_optional_file(music_pool, "Tertiary Music/SFX")
-
-    # --- Phase & Duration Configuration ---
-    p1, p2, p3 = get_phase_configuration()
-    timeline = compute_timeline(p1, p2, p3)
-    
-    target_seconds = timeline["total_seconds"]
-    formatted_time = format_duration(timeline["minutes"])
+    music_input = select_optional_file(music_pool, "Tertiary Music")
 
     # --- Runtime Inputs ---
     print("\n--- Social CTA Ticker ---")
@@ -227,19 +220,34 @@ def process_long_content():
         
         rain_vol = float(input("Rain Layer Volume % [Default 75]: ") or 75) / 100
         sfx_vol = float(input("SFX Layer Volume % [Default 15]: ") or 15) / 100 if sfx_input else 0.15
-        music_vol = float(input("Music/SFX Layer Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
+        music_vol = float(input("Music Layer Volume % [Default 10]: ") or 10) / 100 if music_input else 0.10
+        
+        # --- Dimming Configuration ---
+        dim_start_fraction = float(input("At what fraction should dimming start? (0.9 = last 10%) [Default 0.9]: ") or 0.9)
     except ValueError:
-        speed_factor, master_gain, rain_vol, sfx_vol, music_vol = 1.0, 1.0, 0.75, 0.15, 0.10
+        speed_factor, master_gain, rain_vol, sfx_vol, music_vol, dim_start_fraction = 1.0, 1.0, 0.75, 0.15, 0.10, 0.9
 
     res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080", "2k": "2560:1440", "4k": "3840:2160"}
     res_choice = input("\nEnter resolution (e.g., 1080p): ").lower().strip()
     target_res = res_map.get(res_choice, "1920:1080")
 
-    # --- Video Loop Logic ---
+    # --- Duration Logic ---
     duration, _ = get_video_info(video_input)
     adj_duration = duration * speed_factor
-    loop_fade_dur = 1.0 
-    loop_duration = adj_duration - loop_fade_dur 
+    fade_dur = 1.0
+    loop_duration = adj_duration - fade_dur 
+
+    while True:
+        try:
+            target_minutes = float(input("Enter DESIRED final length (Decimal Minutes): "))
+            target_seconds = int(target_minutes * 60)
+            formatted_time = format_duration(target_minutes)
+            break
+        except ValueError: print("❌ Invalid input.")
+
+    # Calculate Dimming Parameters
+    dim_start_time = round(target_seconds * dim_start_fraction, 2)
+    dim_duration = round(target_seconds - dim_start_time, 2)
 
     tile_file = output_dir / "temp_master_tile.mp4"
     segment_file = output_dir / "temp_1min_segment.mp4"
@@ -248,44 +256,47 @@ def process_long_content():
     final_output = output_dir / f"Rain_Video_{formatted_time.replace(' ', '_')}.mp4"
 
     try:
-        # [1/4] Preparing Video Loop
+        # --- STAGE 1: VIDEO TILE PREPARATION ---
+        print(f"\n[1/4] Preparing Video Loop...")
         filter_tile = (
             f"[0:v]setpts={speed_factor}*PTS,"
             f"scale={target_res}:force_original_aspect_ratio=increase,crop={target_res},setsar=1,split[main][over];"
-            f"[over]trim=start=0:end={loop_fade_dur},setpts=PTS-STARTPTS[fadein];"
-            f"[main]trim=start={loop_fade_dur},setpts=PTS-STARTPTS[base];"
-            f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={loop_fade_dur}:alpha=1[alpha_fade];"
+            f"[over]trim=start=0:end={fade_dur},setpts=PTS-STARTPTS[fadein];"
+            f"[main]trim=start={fade_dur},setpts=PTS-STARTPTS[base];"
+            f"[fadein]format=pix_fmts=yuva420p,fade=t=in:st=0:d={fade_dur}:alpha=1[alpha_fade];"
             f"[base][alpha_fade]overlay=x=0:y=0:shortest=1[v]"
         )
         subprocess.run(["ffmpeg", "-y", "-i", str(video_input), "-filter_complex", filter_tile, "-map", "[v]", "-c:v", "libx264", "-crf", "18", str(tile_file)], check=True)
 
+        # --- STAGE 2: ASSEMBLE SILENT MASTER WITH DIMMING ---
+        print(f"[2/4] Assembling Silent Master with Video Dimming...")
         with open(list_file, "w") as f:
             for _ in range(math.ceil(60 / loop_duration)): f.write(f"file '{tile_file.name}'\n")
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", "-t", "60", str(segment_file)], check=True)
 
-        # [2/4] Assembling Master with Video Fade
-        print(f"[2/4] Assembling Master...")
         with open(list_file, "w") as f:
-            for _ in range(math.ceil(timeline["minutes"])): f.write(f"file '{segment_file.name}'\n")
+            for _ in range(math.ceil(target_minutes)): f.write(f"file '{segment_file.name}'\n")
 
-        scroll_speed = 50
+        scroll_speed = 50 
+        # Fix: Applying the 'fade' filter directly here in Stage 2
         filter_final = (
             f"[1:v]scale={target_res}[logo_sc];"
-            f"[0:v][logo_sc]overlay=0:0:enable='between(t,5,{timeline['p2_start']})'[v_logo];"
-            f"[v_logo]drawbox=y=ih-80:color=black@0.6:width=iw:height=60:t=fill:enable='between(t,5,{timeline['p2_start']})'[v_bg];"
+            f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
+            f"[v_logo]drawbox=y=ih-80:color=black@0.6:width=iw:height=60:t=fill:enable='gt(t,5)'[v_bg];"
             f"[v_bg]drawtext=text='{sub_text}':font='Arial':fontsize=24:fontcolor=0x5cf629:"
-            f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-62:enable='between(t,5,{timeline['p2_start']})':"            
-            f"shadowcolor=black@0.8:shadowx=2:shadowy=2[v_elements];"
-            f"[v_elements]fade=t=out:st={timeline['p2_start']}:d={timeline['fade_duration']}[vout]"
+            f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-62:enable='gt(t,5)':"            
+            f"shadowcolor=black@0.8:shadowx=2:shadowy=2[v_text];"
+            f"[v_text]fade=t=out:st={dim_start_time}:d={dim_duration}[vout]"
         )
+
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-i", str(img_logo_path), "-filter_complex", filter_final, "-map", "[vout]", "-t", str(target_seconds), "-c:v", "libx264", "-crf", "21", "-preset", "veryfast", str(temp_no_audio)], check=True)
 
-        # [3/4] Blending Audio with Crossfade Muffling
-        print(f"\n[3/4] Blending Audio with Muffling Phase...")
+        # --- STAGE 3: FINAL MIX (AUDIO MUXING ONLY) ---
+        print(f"\n[3/4] Blending Seamless Audio...")
         
         profile_filter = AUDIO_PROFILES["long"] 
         audio_inputs = []
-        filter_audio = ""
+        filter_complex_audio = ""
         mix_labels = ""
         
         layers = [
@@ -298,33 +309,29 @@ def process_long_content():
         
         for idx, (path, vol, name) in enumerate(active_layers):
             audio_inputs += ["-stream_loop", "-1", "-i", str(path)]
-            
-            # FIX: Create two paths: one clear, one muffled, and fade between them
-            filter_audio += (
-                f"[{idx+1}:a]{profile_filter},volume={vol},highpass=f=20,asplit=2[clr_{name}][muf_{name}];"
-                f"[muf_{name}]lowpass=f=400[muf_final_{name}];"
-                f"[clr_{name}]afade=t=out:st={timeline['p2_start']}:d={timeline['fade_duration']}[clr_fade_{name}];"
-                f"[muf_final_{name}]afade=t=in:st={timeline['p2_start']}:d={timeline['fade_duration']}[muf_fade_{name}];"
-                f"[clr_fade_{name}][muf_fade_{name}]amix=inputs=2:duration=first[merged_{name}];"
-                f"[merged_{name}]afade=t=in:st=0:d=0.1,afade=t=out:st={target_seconds-0.1}:d=0.1[{name}];"
+            filter_complex_audio += (
+                f"[{idx+1}:a]{profile_filter},volume={vol},"
+                f"afade=t=in:st=0:d=0.1,afade=t=out:st={target_seconds-dim_duration}:d={dim_duration}"
+                f"[{name}];"
             )
             mix_labels += f"[{name}]"
 
-        filter_audio += (
+        filter_complex_audio += (
             f"{mix_labels}amix=inputs={len(active_layers)}:duration=first:dropout_transition=3:normalize=0[a_mixed];"
             f"[a_mixed]volume={master_gain}[final_a]"
         )
 
+        # Final Muxing - Video is copied because dimming was already baked into temp_no_audio
         subprocess.run([
             "ffmpeg", "-y", "-i", str(temp_no_audio)
         ] + audio_inputs + [
-            "-filter_complex", filter_audio,
+            "-filter_complex", filter_complex_audio,
             "-map", "0:v", "-map", "[final_a]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "320k",
             "-shortest", str(final_output)
         ], check=True)
 
-        print(f"\n✅ SUCCESS! {formatted_time} video created.")
+        print(f"\n✅ SUCCESS! Video and Audio now both dim over the final {dim_duration}s.")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
