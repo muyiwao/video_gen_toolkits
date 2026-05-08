@@ -20,7 +20,7 @@ def parse_range_input(user_input):
 def distribute_shorts_with_metadata():
     # 1. Paths Configuration
     source_dir = Path("./output/output_shorts")
-    dest_base = Path(r"C:\Project_Works\MuyVerseProjects\youtube-content-toolkit\Shorts")
+    dest_base = Path(r"C:\Project_Works\MuyProjects\youtube-content-toolkit\Shorts")
     
     video_extensions = {".mp4", ".mov", ".mkv", ".webm"}
 
