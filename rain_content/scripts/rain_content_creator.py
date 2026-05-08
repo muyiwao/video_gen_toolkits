@@ -373,7 +373,7 @@ def process_shorts_batch():
     if not video_input or not rain_input: return
 
     sfx_input = select_optional_file(audio_base_dir / "sfx", "Secondary SFX")
-    music_input = select_optional_file(audio_base_dir / "music", "Tertiary Music/SFX")
+    music_input = select_optional_file(audio_base_dir / "music-sfx", "Tertiary Music/SFX")
 
     # --- 4. Duration & Resolution ---
     dur_raw = input("\nTarget Duration (e.g., 59) [Default 59s]: ").strip().lower()
