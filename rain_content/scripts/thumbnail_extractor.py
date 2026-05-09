@@ -9,65 +9,70 @@ VIDEO_DIR = Path(r'C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\
 THUMB_OUT_DIR = Path(r'C:\Project_Works\MuyProjects\video_gen_toolkits\output\output_long')
 THUMB_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# --- CTR & PLATFORM CONFIGURATION ---
 TARGET_WIDTH = 3840  
-MAX_SIZE_BYTES = 1.9 * 1024 * 1024  # Strict YouTube 2MB Limit
+MAX_SIZE_BYTES = 1.9 * 1024 * 1024
 
 # --- RAIN INTENSITY CONFIGURATION ---
 RAIN_TYPES = {
-    "1": {"name": "Heavy Rain", "thresh": 8, "glow": 0.8, "offset": 30, "blur": 5},
-    "2": {"name": "Soft Drizzle", "thresh": 18, "glow": 0.3, "offset": 10, "blur": 3},
-    "3": {"name": "Rain Thunderstorm", "thresh": 6, "glow": 1.1, "offset": 45, "blur": 7},
-    "4": {"name": "Windy Rain", "thresh": 10, "glow": 0.7, "offset": 25, "blur": 9}
+    "1": {"name": "Heavy Rain", "thresh": 12, "glow": 0.6, "offset": 20, "length": 45, "angle": 85},
+    "2": {"name": "Soft Drizzle", "thresh": 22, "glow": 0.2, "offset": 10, "length": 20, "angle": 90},
+    "3": {"name": "Rain Thunderstorm", "thresh": 10, "glow": 0.9, "offset": 40, "length": 65, "angle": 80},
+    "4": {"name": "Windy Rain", "thresh": 15, "glow": 0.5, "offset": 25, "length": 80, "angle": 45}
 }
 
+def create_motion_blur_kernel(length, angle):
+    """Creates a kernel for directional motion blur to simulate rain streaks."""
+    kernel = np.zeros((length, length))
+    center = length // 2
+    kernel[:, center] = 1.0
+    
+    # Rotate the kernel to the desired angle
+    matrix = cv2.getRotationMatrix2D((center, center), angle - 90, 1.0)
+    kernel = cv2.warpAffine(kernel, matrix, (length, length))
+    
+    return kernel / np.sum(kernel)
+
 def apply_ctr_enhancements(cv2_image):
-    """
-    Applies the 'Rain SEO Master List' visual pops: 
-    Vibrancy, Contrast, and Sharpness via PIL.
-    """
-    # Convert CV2 (BGR) to PIL (RGB)
+    """Applies high-contrast and vibrancy pops for SEO/CTR."""
     color_coverted = cv2.cvtColor(cv2_image, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(color_coverted)
-
-    # 1. Boost Contrast (1.25x) - Makes rain highlights pop against dark backgrounds
+    
     pil_img = ImageEnhance.Contrast(pil_img).enhance(1.25)
-    
-    # 2. Boost Saturation (1.4x) - Vital for 'Nature' and 'Atmospheric' CTR
     pil_img = ImageEnhance.Color(pil_img).enhance(1.4)
-    
-    # 3. Professional Sharpening - Emphasizes texture of rain and environment
     pil_img = ImageEnhance.Sharpness(pil_img).enhance(1.5)
     pil_img = pil_img.filter(ImageFilter.UnsharpMask(radius=2, percent=100, threshold=3))
-
-    # Convert back to BGR for the CV2 saving logic
+    
     return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
-def apply_universal_rain_logic(image, hero_diff_mask, rain_config):
+def process_frame_logic(image, hero_diff_mask, rain_config=None):
+    """Handles upscaling, streak generation, and final color enhancement."""
     h, w = image.shape[:2]
     aspect_ratio = w / h
     target_height = int(TARGET_WIDTH / aspect_ratio)
-    
-    # 1. High-Quality 4K Upscale
     image_4k = cv2.resize(image, (TARGET_WIDTH, target_height), interpolation=cv2.INTER_LANCZOS4)
-    rain_mask = cv2.resize(hero_diff_mask, (TARGET_WIDTH, target_height), interpolation=cv2.INTER_LINEAR)
     
-    # 2. Dynamic Mask Refinement
-    rain_mask = cv2.GaussianBlur(rain_mask, (rain_config['blur'], rain_config['blur']), 0)
-    _, rain_mask = cv2.threshold(rain_mask, rain_config['thresh'], 255, cv2.THRESH_BINARY)
-    
-    # 3. Rain Highlight Layer
-    rain_overlay = cv2.addWeighted(image_4k, 1.0, image_4k, rain_config['glow'], rain_config['offset']) 
-    soft_mask = cv2.GaussianBlur(rain_mask, (7, 7), 0).astype(np.float32) / 255.0
-    
-    # 4. Merge Rain Logic
-    final_4k = (image_4k * (1 - soft_mask[:,:,np.newaxis]) + 
-                rain_overlay * soft_mask[:,:,np.newaxis]).astype(np.uint8)
+    if rain_config:
+        # Resize and threshold mask
+        rain_mask = cv2.resize(hero_diff_mask, (TARGET_WIDTH, target_height), interpolation=cv2.INTER_LINEAR)
+        _, rain_mask = cv2.threshold(rain_mask, rain_config['thresh'], 255, cv2.THRESH_BINARY)
+        
+        # Convert dots to STREAKS using Motion Blur Kernel
+        kernel = create_motion_blur_kernel(rain_config['length'], rain_config['angle'])
+        rain_mask = cv2.filter2D(rain_mask, -1, kernel)
+        
+        # Create atmospheric glow layer
+        rain_overlay = cv2.addWeighted(image_4k, 1.0, image_4k, rain_config['glow'], rain_config['offset']) 
+        
+        # Soften mask for natural blending
+        soft_mask = cv2.GaussianBlur(rain_mask, (3, 3), 0).astype(np.float32) / 255.0
+        
+        image_4k = (image_4k * (1 - soft_mask[:,:,np.newaxis]) + 
+                    rain_overlay * soft_mask[:,:,np.newaxis]).astype(np.uint8)
 
-    # 5. --- NEW: APPLY CTR POP ---
-    return apply_ctr_enhancements(final_4k)
+    return apply_ctr_enhancements(image_4k)
 
 def get_hero_frame_with_mask(video_path):
+    """Analyzes first 300 frames to find the frame with the most motion (rain particles)."""
     cap = cv2.VideoCapture(str(video_path))
     max_score, best_frame, best_mask = -1, None, None
     ret, f1 = cap.read()
@@ -90,27 +95,28 @@ def get_hero_frame_with_mask(video_path):
     return best_frame, best_mask
 
 def save_with_size_constraint(image, out_path):
+    """Saves as JPEG with 4:4:4 sampling and iterative quality reduction to fit file size."""
     quality = 95
-    success = False
+    # Fix for Warning: Use explicit OpenCV enum for sampling
+    sampling_factor = cv2.IMWRITE_JPEG_SAMPLING_FACTOR_444
+
     while quality > 40:
-        # Using [subsampling, 0] to maintain 4:4:4 chroma for maximum 'crispiness'
-        # This prevents the red/blue hues in rain from blurring.
         encode_param = [
             int(cv2.IMWRITE_JPEG_QUALITY), quality,
-            int(cv2.IMWRITE_JPEG_SAMPLING_FACTOR), 0
+            int(cv2.IMWRITE_JPEG_SAMPLING_FACTOR), sampling_factor
         ]
         result, encimg = cv2.imencode('.jpg', image, encode_param)
         
         if len(encimg) <= MAX_SIZE_BYTES:
             with open(out_path, "wb") as f:
                 f.write(encimg)
-            print(f"✅ Saved CTR-Optimized: {out_path.name} ({len(encimg)/(1024*1024):.2f} MB) at {quality}% Quality")
-            success = True
-            break
+            print(f"✅ Saved: {out_path.name} ({len(encimg)/(1024*1024):.2f} MB) @ {quality}% quality")
+            return True
         quality -= 2 
-    return success
+    return False
 
 def crop_16_9(image):
+    """Ensures the frame is a perfect 16:9 aspect ratio before upscaling."""
     h, w = image.shape[:2]
     target = 16/9
     if abs((w/h) - target) < 0.01: return image
@@ -123,39 +129,46 @@ def crop_16_9(image):
     return image[s:s+nh, :]
 
 def generate_4k_rain_thumbs():
+    """Main execution flow for generating thumbnails."""
     video_files = sorted(list(VIDEO_DIR.glob("*.mp4")))
     if not video_files: 
         print(f"❌ No videos found in {VIDEO_DIR}")
         return
 
-    print("\n--- 4K Rain CTR Thumbnail Engine ---")
+    print("\n--- 4K Rain Streak Engine ---")
     for i, file in enumerate(video_files, 1):
         print(f"{i}. {file.name}")
     
-    v_choice = input(f"\nSelect Video (1-{len(video_files)}): ")
     try:
+        v_choice = input(f"\nSelect Video (1-{len(video_files)}): ")
         target_video = video_files[int(v_choice)-1]
-    except: return
+    except (ValueError, IndexError):
+        print("❌ Invalid selection.")
+        return
 
     print("\n--- Select Rain Intensity Mode ---")
+    print("0. Raw Enhance (No Streaks/Mask)")
     for k, v in RAIN_TYPES.items():
         print(f"{k}. {v['name']}")
     
-    t_choice = input("\nChoice: ")
-    rain_config = RAIN_TYPES.get(t_choice, RAIN_TYPES["1"])
+    t_choice = input("\nChoice [Default 0]: ").strip()
+    rain_config = RAIN_TYPES.get(t_choice, None)
 
-    print(f"\n🔍 Processing {target_video.name}...")
+    print(f"\n🔍 Analyzing video and applying streaks to {target_video.name}...")
     
     raw, mask = get_hero_frame_with_mask(target_video)
+    
     if raw is not None:
-        raw_cropped = crop_16_9(raw)
-        mask_cropped = crop_16_9(mask)
+        raw_c = crop_16_9(raw)
+        mask_c = crop_16_9(mask)
         
-        # Apply Rain Logic + CTR Pop
-        enhanced_4k = apply_universal_rain_logic(raw_cropped, mask_cropped, rain_config)
+        enhanced_4k = process_frame_logic(raw_c, mask_c, rain_config)
         
-        out_name = f"CTR_4K_{rain_config['name'].replace(' ', '_').upper()}_{target_video.stem}.jpg"
+        label = rain_config['name'].replace(' ', '_').upper() if rain_config else "RAW_ENHANCE"
+        out_name = f"STREAK_4K_{label}_{target_video.stem}.jpg"
         save_with_size_constraint(enhanced_4k, THUMB_OUT_DIR / out_name)
+    else:
+        print("❌ Failed to extract frame from video.")
 
 if __name__ == "__main__":
     generate_4k_rain_thumbs()
