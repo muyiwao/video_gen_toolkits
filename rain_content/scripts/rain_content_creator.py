@@ -645,7 +645,7 @@ def process_reels_batch():
 
 if __name__ == "__main__":
     print("--- CONTENT GENERATION TOOLKIT (FFMPEG NATIVE AUDIO) ---")
-    print("1. Long | 2. Shorts Batch")
+    print("1. Long | 2. Shorts Batch | 3. Reels Batch")
     choice = input("\nChoice: ").strip()
     if choice == '1':
         process_long_content()
@@ -659,3 +659,6 @@ if __name__ == "__main__":
             
     elif choice == '2': 
         process_shorts_batch()
+
+    elif choice == '3':
+        process_reels_batch()
