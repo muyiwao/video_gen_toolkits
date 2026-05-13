@@ -806,22 +806,26 @@ def process_reels_batch():
 
     print(f"\n✨ Batch complete. Results in: {output_dir}")
 
+def extract_thumbnail():
+    # --- NEW THUMBNAIL PROMPT ---
+    make_thumb = input("\n🖼️  Generate thumbnail for this long video? (y/n): ").strip().lower()
+    if make_thumb == 'y':
+        thumbnail_extractor.generate_4k_rain_thumbs()
+    else:
+        print("⏭️  Skipping thumbnail generation.")
+
+
 if __name__ == "__main__":
     print("--- CONTENT GENERATION TOOLKIT (FFMPEG NATIVE AUDIO) ---")
     print("1. Long | 2. Vertical Long  | 3. Shorts Batch | 4. Reels Batch")
     choice = input("\nChoice: ").strip()
     if choice == '1':
         process_long_content()
+        extract_thumbnail()
         
-        # --- NEW THUMBNAIL PROMPT ---
-        make_thumb = input("\n🖼️  Generate thumbnail for this long video? (y/n): ").strip().lower()
-        if make_thumb == 'y':
-            thumbnail_extractor.generate_4k_rain_thumbs()
-        else:
-            print("⏭️  Skipping thumbnail generation.")
-
     elif choice == '2':
         process_vertical_long_content()
+        extract_thumbnail()
 
     elif choice == '3':
         process_shorts_batch()
