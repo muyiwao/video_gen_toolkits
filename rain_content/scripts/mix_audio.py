@@ -41,7 +41,7 @@ def select_file(directory, prompt):
 def mix_audio():
     # 1. Path Configurations
     base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input\audio_pools")
-    output_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input\sfx")
+    output_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input\audio_pools\sfx")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 2. Sequential Selection for Sound 1
