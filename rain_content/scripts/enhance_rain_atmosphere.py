@@ -20,7 +20,6 @@ def select_input_files(directory):
     valid_exts = exts[type_choice]
     input_type = "image" if type_choice == "1" else "video"
     
-    # Filter and list files
     files = sorted([f for f in directory.glob("*") if f.suffix.lower() in valid_exts])
     
     if not files:
@@ -31,12 +30,8 @@ def select_input_files(directory):
     for i, file in enumerate(files, 1):
         print(f"{i}. {file.name}")
     
-    print("\nSelection Options:")
-    print("- Single: '1'")
-    print("- Multiple: '1, 3, 5'")
-    print("- All: 'all'")
-    
-    user_input = input("\nEnter your selection: ").strip().lower()
+    print("\nSelection Options: '1', '1, 3, 5', or 'all'")
+    user_input = input("\nEnter selection: ").strip().lower()
     
     selected_files = []
     if user_input == 'all':
@@ -46,24 +41,33 @@ def select_input_files(directory):
             indices = [int(i.strip()) - 1 for i in user_input.split(',')]
             selected_files = [files[i] for i in indices if 0 <= i < len(files)]
         except ValueError:
-            print("❌ Invalid format. Use numbers separated by commas.")
+            print("❌ Invalid format.")
             return [], None
 
     return selected_files, input_type
 
 def run_ffmpeg_process(input_file, output_path, input_type, color_grading):
-    """Handles the actual FFmpeg call for an individual file."""
+    """Handles FFmpeg call with dynamic settings for image vs video output."""
     cmd = ["ffmpeg", "-y", "-i", str(input_file)]
 
     if input_type == "video":
-        # Extract the first high-quality frame
-        cmd += ["-frames:v", "1"]
-
-    cmd += [
-        "-vf", color_grading,
-        "-q:v", "2", 
-        str(output_path)
-    ]
+        # Video settings: libx264 for high compatibility, CRF 17 for high quality
+        cmd += [
+            "-vf", color_grading,
+            "-c:v", "libx264",
+            "-crf", "17",
+            "-preset", "slow",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "copy", # Keep original audio
+            str(output_path)
+        ]
+    else:
+        # Image settings: High quality JPEG output
+        cmd += [
+            "-vf", color_grading,
+            "-q:v", "2",
+            str(output_path)
+        ]
 
     try:
         subprocess.run(cmd, check=True, capture_output=True)
@@ -81,10 +85,9 @@ def enhance_rain_atmosphere():
     # 2. Runtime Selection
     selected_files, input_type = select_input_files(raw_dir)
     if not selected_files:
-        print("No files selected. Exiting.")
         return
 
-    # 3. Atmospheric Filter (Payne's Gray / Moody Ultramarine)
+    # 3. Atmospheric Filter
     color_grading = (
         "colorchannelmixer="
         ".75:.1:.1:0: "   # Muting Reds
@@ -99,14 +102,16 @@ def enhance_rain_atmosphere():
     # 4. Loop Processing
     success_count = 0
     for file in selected_files:
-        output_path = enhanced_dir / f"Enhanced_{file.stem}.jpg"
+        # Determine output extension based on input type
+        ext = ".mp4" if input_type == "video" else ".jpg"
+        output_path = enhanced_dir / f"Enhanced_{file.stem}{ext}"
+        
         print(f"✨ Enhancing: {file.name} -> {output_path.name}")
         
         if run_ffmpeg_process(file, output_path, input_type, color_grading):
             success_count += 1
 
     print(f"\n✅ Finished! Successfully processed {success_count}/{len(selected_files)} files.")
-    print(f"👉 Location: {enhanced_dir}")
 
 if __name__ == "__main__":
     enhance_rain_atmosphere()
