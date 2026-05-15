@@ -190,7 +190,7 @@ def compute_timeline(p1_pct, p2_pct, p3_pct):
 def process_long_content():
     # 1. Paths Configuration
     base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
-    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
+    source_dir = base_path / "rain_content" / "recorded" / "final_processed"
     asset_dir = base_path / "rain_content" / "attachments" / "long"
     output_dir = base_path / "output" / "output_long"
     sfx_pool = base_path / "input" / "audio_pools" / "sfx"
@@ -342,7 +342,7 @@ def process_long_content():
 def process_vertical_long_content():
     # 1. Paths Configuration
     base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
-    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
+    source_dir = base_path / "rain_content" / "recorded" / "final_processed"
     asset_dir = base_path / "rain_content" / "attachments" / "shorts"
     output_dir = base_path / "output" / "output_long_vertical"
     sfx_pool = base_path / "input" / "audio_pools" / "sfx"
@@ -513,7 +513,7 @@ def process_shorts_batch():
     """
     # --- 1. Path Configurations ---
     base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
-    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
+    source_dir = base_path / "rain_content" / "recorded" / "final_processed"
     audio_base_dir = base_path / "input" / "audio_pools"
     asset_dir = base_path / "rain_content" / "attachments" / "shorts"
     output_dir = base_path / "output" / "output_shorts"
@@ -663,7 +663,7 @@ def process_reels_batch():
     """
     # --- 1. Path Configurations ---
     base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits")
-    source_dir = base_path / "rain_content" / "recorded" / "enhanced"
+    source_dir = base_path / "rain_content" / "recorded" / "final_processed"
     audio_base_dir = base_path / "input" / "audio_pools"
     asset_dir = base_path / "rain_content" / "attachments" / "reels"
     output_dir = base_path / "output" / "output_reels"
