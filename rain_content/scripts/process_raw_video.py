@@ -10,8 +10,7 @@ import re
 root_path = Path(__file__).resolve().parent.parent
 sys.path.append(str(root_path))
 
-from scripts.raw_processing import process_video_length, enhance_rain_atmosphere, overlay_rain_streaks
-
+from scripts.pre_processing import process_video_length, enhance_rain_atmosphere, overlay_rain_streaks
 
 
 if __name__ == "__main__":
