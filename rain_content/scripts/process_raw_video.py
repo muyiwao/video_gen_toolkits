@@ -10,10 +10,12 @@ import re
 root_path = Path(__file__).resolve().parent.parent
 sys.path.append(str(root_path))
 
-from scripts.pre_processing import process_video_length, enhance_rain_atmosphere, overlay_rain_streaks
-
+# Explicitly import the functions FROM the specific module files
+from scripts.process_video_length import process_video_length
+from scripts.enhance_rain_atmosphere import enhance_rain_atmosphere
+from scripts.overlay_rain_streaks import overlay_rain
 
 if __name__ == "__main__":
- process_video_length()
- enhance_rain_atmosphere()
- overlay_rain_streaks()
+    process_video_length()
+    enhance_rain_atmosphere()
+    overlay_rain()
