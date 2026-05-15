@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image, ImageEnhance, ImageFilter
 
 # --- PATH CONFIGURATION ---
-VIDEO_DIR = Path(r'C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\enhanced')
+VIDEO_DIR = Path(r'C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\final_processed')
 THUMB_OUT_DIR = Path(r'C:\Project_Works\MuyProjects\video_gen_toolkits\output')
 OVERLAY_PATH = Path(r'C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\attachments\shorts\live_thumbnail_overlay.png')
 THUMB_OUT_DIR.mkdir(parents=True, exist_ok=True)
