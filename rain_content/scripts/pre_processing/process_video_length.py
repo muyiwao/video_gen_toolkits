@@ -5,8 +5,8 @@ from pathlib import Path
 
 def process_video_length():
     # --- Configuration ---
-    input_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input")
-    output_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\raw")
+    input_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\raw")
+    output_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\first_processed")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Select Video

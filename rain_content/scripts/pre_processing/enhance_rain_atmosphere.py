@@ -78,8 +78,8 @@ def run_ffmpeg_process(input_file, output_path, input_type, color_grading):
 
 def enhance_rain_atmosphere():
     # 1. Path Configuration
-    raw_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\raw")
-    enhanced_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\enhanced")
+    raw_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\first_processed")
+    enhanced_dir = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\second_processed")
     enhanced_dir.mkdir(parents=True, exist_ok=True)
     
     # 2. Runtime Selection

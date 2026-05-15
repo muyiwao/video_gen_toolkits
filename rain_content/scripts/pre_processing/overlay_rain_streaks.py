@@ -128,8 +128,8 @@ def process_video(source_video_path, output_video_path, rain_video_path):
 
 def overlay_rain():
     RAIN_POOL_DIR = r"C:\Project_Works\MuyProjects\video_gen_toolkits\input\video_pools"
-    INPUT_DIR = r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\raw"
-    OUTPUT_DIR = r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\enhanced"
+    INPUT_DIR = r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\second_processed"
+    OUTPUT_DIR = r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\final_processed"
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
