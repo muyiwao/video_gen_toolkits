@@ -283,7 +283,7 @@ def process_long_content():
             f"[1:v]scale={target_res}[logo_sc];"
             f"[0:v][logo_sc]overlay=0:0:enable='gt(t,5)'[v_logo];"
             f"[v_logo]drawbox=y=ih-80:color=black@0.6:width=iw:height=60:t=fill:enable='gt(t,5)'[v_bg];"
-            f"[v_bg]drawtext=text='{sub_text}':font='Arial':fontsize=24:fontcolor=0x5cf629:"
+            f"[v_bg]drawtext=text='{sub_text}':font='Arial':fontsize=28:fontcolor=0x5cf629:"
             f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h-62:enable='gt(t,5)':"            
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[v_text];"
             f"[v_text]fade=t=out:st={dim_start_time}:d={dim_duration}[vout]"
@@ -451,7 +451,7 @@ def process_vertical_long_content():
             f"[0:v][logo_sc]overlay=W-w-20:20:enable='gt(t,5)'[v_logo];" 
             
             # 3. Position Caption: At the top bottom one-fourth (h/4)
-            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=34:fontcolor=0x5cf629:"
+            f"[v_logo]drawtext=text='{sub_text}':font='Arial':fontsize=38:fontcolor=0x5cf629:"
             f"x='mod(t*{scroll_speed}, w+text_w)-text_w':y=h/7:enable='gt(t,5)':"
             f"box=1:boxcolor=black@0.6:boxborderw=15:"
             f"shadowcolor=black@0.8:shadowx=2:shadowy=2[v_text];"
