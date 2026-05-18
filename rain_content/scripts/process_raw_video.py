@@ -62,4 +62,4 @@ if __name__ == "__main__":
     # 3. Overlay Rain
     if should_execute("Overlay Rain"):
         overlay_rain()
-        purge_processed_inputs(INPUT_DIR_STAGE_3, "Stage 3 (Rain Streak Overlay)")
+        # purge_processed_inputs(INPUT_DIR_STAGE_3, "Stage 3 (Rain Streak Overlay)")
