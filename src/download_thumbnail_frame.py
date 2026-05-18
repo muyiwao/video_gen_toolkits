@@ -61,7 +61,7 @@ def extract_and_upscale_thumbnail(video_url, output_dir):
 
 def main():
     # PLACEHOLDER: Define your output path folder location here
-    OUTPUT_DIRECTORY = r"C:\Project_Works\MuyProjects\video_gen_toolkits\output"
+    OUTPUT_DIRECTORY = r"C:\Project_Works\MuyProjects\video_gen_toolkits\rain_content\recorded\first_processed"
 
     print("--- YouTube Batch First Frame Grabber (4K 16:9) ---")
     user_input = input("Enter YouTube URLs (separated by spaces or commas):\n").strip()
