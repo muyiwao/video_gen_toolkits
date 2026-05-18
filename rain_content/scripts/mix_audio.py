@@ -38,6 +38,20 @@ def select_file(directory, prompt):
         print("Invalid selection.")
         return None
 
+def get_audio_duration(file_path):
+    """Probes the total length of an audio file in seconds via ffprobe."""
+    cmd = [
+        "ffprobe", "-v", "error", 
+        "-show_entries", "format=duration", 
+        "-of", "default=noprint_wrappers=1:nokey=1", 
+        str(file_path)
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return float(result.stdout.strip())
+    except Exception:
+        return 0.0
+
 def mix_audio():
     # 1. Path Configurations
     base_path = Path(r"C:\Project_Works\MuyProjects\video_gen_toolkits\input\audio_pools")
@@ -67,36 +81,40 @@ def mix_audio():
     out_name = input("\nEnter name for output file (without .mp3): ").strip() or "combined_mix"
     output_path = output_dir / f"{out_name}.mp3"
 
-    # 6. FFmpeg Command with Looping Support
-    # '-stream_loop -1' ensures shorter clips repeat to match the longer clip
-    cmd = [
-        "ffmpeg", "-y",
-        "-stream_loop", "-1", "-i", str(audio1),
-        "-stream_loop", "-1", "-i", str(audio2),
-        "-filter_complex", 
-        f"[0:a]volume={vol1}[a1];[1:a]volume={vol2}[a2];[a1][a2]amix=inputs=2:duration=shortest:dropout_transition=0",
-        "-c:a", "libmp3lame",
-        "-q:a", "2",
-        str(output_path)
-    ]
+    # 6. Analyze Track Durations
+    dur1 = get_audio_duration(audio1)
+    dur2 = get_audio_duration(audio2)
+    max_duration = max(dur1, dur2)
 
-    print(f"\n🎵 Mixing: {vol1*100}% {audio1.name} + {vol2*100}% {audio2.name}...")
+    print(f"\n📏 Audio Profiles:\n  - {audio1.name}: {dur1:.2f}s\n  - {audio2.name}: {dur2:.2f}s")
+    print(f"🎵 Mixing: {vol1*100}% {audio1.name} + {vol2*100}% {audio2.name}...")
+
+    # 7. Construct Adaptive Seamless Loop Command
+    # If tracks match, we drop loop parameters entirely. Otherwise, we tell the shorter track 
+    # to infinitely loop, while binding the total export length explicitly via '-t'
+    final_cmd = ["ffmpeg", "-y"]
+
+    if dur1 < dur2:
+        final_cmd.extend(["-stream_loop", "-1", "-i", str(audio1)])
+        final_cmd.extend(["-i", str(audio2)])
+    elif dur2 < dur1:
+        final_cmd.extend(["-i", str(audio1)])
+        final_cmd.extend(["-stream_loop", "-1", "-i", str(audio2)])
+    else:
+        final_cmd.extend(["-i", str(audio1), "-i", str(audio2)])
+
+    # Construct the complex filter execution string
+    filter_complex = f"[0:a]volume={vol1}[a1];[1:a]volume={vol2}[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=0"
+    
+    final_cmd.extend([
+        "-filter_complex", filter_complex,
+        "-t", f"{max_duration:.3f}", # Clamp processing time precisely to the absolute longest raw track
+        "-c:a", "libmp3lame", 
+        "-q:a", "2", 
+        str(output_path)
+    ])
     
     try:
-        # Note: We use duration=shortest in the amix filter combined with loop 
-        # to ensure the mix doesn't run infinitely, though in this case, 
-        # you may need to manually stop or define a -t (time) if both loop.
-        # For a standard mix, we'll remove infinite loop and stick to longest:
-        
-        final_cmd = [
-            "ffmpeg", "-y",
-            "-i", str(audio1),
-            "-i", str(audio2),
-            "-filter_complex", 
-            f"[0:a]volume={vol1}[a1];[1:a]volume={vol2}[a2];[a1][a2]amix=inputs=2:duration=longest:dropout_transition=0",
-            "-c:a", "libmp3lame", "-q:a", "2", str(output_path)
-        ]
-        
         subprocess.run(final_cmd, check=True, capture_output=True)
         print(f"✅ Success! Saved to: {output_path}")
     except subprocess.CalledProcessError as e:
